@@ -1,0 +1,61 @@
+# 本地开发基础依赖(architecture B6)。测试一律打真实依赖(no-mocks 规则)。
+#
+# 尚未加入的服务(随对应模块接入,避免空转):
+# - litellm 网关:随 gateway/ 正式实现加入(当前验证版在 test/litellm-spike/)
+# - Langfuse v3:随 M2 telemetry 模块加入(依赖 ClickHouse/S3,配置随用随定)
+# - OpenBao:随 account 模块 Key 托管落地加入(本地开发先用 age,architecture A3 #22)
+name: mogwai-infra
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: mogwai
+      POSTGRES_PASSWORD: mogwai_dev
+      POSTGRES_DB: mogwai
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U mogwai -d mogwai"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    # AOF everysec:usage.completed 是计费唯一来源,不允许静默丢失(tech-design §2.3)
+    command: ["redis-server", "--appendonly", "yes", "--appendfsync", "everysec"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8-alpine
+    environment:
+      CLICKHOUSE_DB: mogwai
+      CLICKHOUSE_USER: mogwai
+      CLICKHOUSE_PASSWORD: mogwai_dev
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - chdata:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --user mogwai --password mogwai_dev --query 'SELECT 1'"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  pgdata:
+  redisdata:
+  chdata:

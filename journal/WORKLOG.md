@@ -108,3 +108,28 @@
 - tech-design §10.3 新增 M4 两个已知设计输入:清偿路由的 provider 匹配缺口(债务滞留策略);清偿调用丢 prompt cache、受债务人 rate limit 的范围限定
 - journal/TODO.md:M1 加 LiteLLM spike(验证三扩展点,最大风险前置)、双协议验收、接入指南页;M4 加清偿两输入;长线 CLI addon 项扩写为获客层框架(mogwai init / 练习赛数据面:Claude Code 本地 transcript、Cursor CSV 手动上传、Trae 待调研 / source=addon 信任权重 / 不早于 M5)
 **引用**: docs/tech-design.md §1.4/§2.2/§4.2/§10.3 · docs/architecture.md A1/A3 · journal/TODO.md
+
+## 2026-07-25 · LiteLLM spike:网关插件架构验证通过(M1 最大风险解除)
+
+**目的**: 开发正式启动前,验证 A4 网关插件架构的三个扩展点在 LiteLLM 上真实可行
+**改动**:
+- 新建 `test/litellm-spike/`(一次性 spike,独立于 monorepo 布局):LiteLLM + Redis + fake_provider(付费 API 测试替身)+ seed + verify.sh,docker-compose 一键起
+- **结论:LiteLLM 方案成立,6/6 断言通过**——custom_auth 读 token 投影认出 user_id 并拒绝未知 token(401);pre-call hook 读 Key 投影、AES-256-GCM 解密、注入请求,上游真实收到解密后的 Key(openai 与 anthropic 双 provider 均验证);success callback 组装出完全符合 tech-design §2.3 schema 的 `usage.completed` 并 XADD 入 Redis Streams;`/v1/chat/completions` 与 `/v1/messages` 双协议同网关同鉴权服务
+- 两个实现级发现(正式 gateway 实现时的已知输入):① pre-call hook 拿到的是对外模型名(router 解析前),provider 判定依赖 §2.2 的 `provider/model` 命名约定——该约定由此从「风格」升级为「机制依赖」;② LiteLLM 的 `/v1/messages` 对 openai 系模型走 Responses API 桥接(上游需支持 `/v1/responses`,真实 provider 满足),对 anthropic 模型为原生透传;③ 插件以 `plugins.<module>` 相对 `/app` 的文件路径加载,不走 PYTHONPATH
+- 本机安装 colima + docker CLI(brew),作为本项目 docker compose 工作流的常驻运行时
+- spike 简化项已记录在其 README(单层加密、无授权投影、无 Langfuse、无流式/失败路径断言),正式实现补齐
+**引用**: test/litellm-spike/ · docs/architecture.md A3 #1/A4 · journal/TODO.md M1
+
+## 2026-07-26 · monorepo 骨架 + packages/shared 事件契约(第一个正式代码 PR)
+
+**目的**: 按「contracts before code」落地跨进程唯一接口,搭起 monorepo 与本地基础设施
+**改动**:
+- monorepo 骨架:pnpm workspace + turborepo + tsconfig.base(strict);工具链 node 26 + pnpm 11(esbuild 构建放行走 pnpm-workspace.yaml onlyBuiltDependencies,声明式可审计)
+- `packages/shared`(zod v4,tsup 双格式构建):A5 全部 7 个事件 schema(公共信封 schema_version/event_id/ts 平铺)+ A4 三个 Redis 投影字段级 schema(含 Redis 键名构造函数、`events:<topic>` 流命名约定);M2+ 事件(ev/battle/settlement)只定义文档已明确的字段,模块设计时走 schema_version 升版
+- usage.completed 相比 §2.3 示例新增 `estimated` 布尔(§2.2 已有语义,schema 补齐);tech-design §2.3 示例未改(default 语义,缺省 false,老事件兼容)
+- JSON Schema 导出(zod v4 原生 toJSONSchema,draft 2020-12):10 个工件到 `packages/shared/schemas/json/`,随源码提交,供 gateway Python 侧校验
+- 测试 15 个全过,其中 usage.completed 用 spike 抓的真实事件原样做回归样本
+- `infra/docker-compose.yml`:Postgres 16 / Redis 7(AOF everysec,§2.3)/ ClickHouse 24.8,三容器 healthy 验证过;Langfuse/OpenBao 刻意推迟到对应模块(头注释说明)
+- 本机安装 pnpm(npm -g);typescript 钉 ^5(7.x 与 tsup dts 插件不兼容)
+- README 新增「开发」快速入口
+**引用**: packages/shared/ · infra/docker-compose.yml · docs/architecture.md A4/A5 · journal/TODO.md M1

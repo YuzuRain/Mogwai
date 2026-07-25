@@ -1,2 +1,8 @@
 .DS_Store
 node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+coverage/
+.env
+.env.*

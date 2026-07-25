@@ -82,6 +82,18 @@ flowchart TB
 - **确定性战斗引擎**:纯函数实现(`packages/battle-core`),同一种子必得同一结果,前后端同构,天然支持回放与复盘。
 - **数值体系复用宝可梦公式**:种族值 / 个体值 / 努力值 / 经验组 / 伤害公式,平衡性有成熟参照。
 
+## 开发
+
+```bash
+# 依赖:Node ≥ 22、pnpm、docker(本机可用 colima)
+pnpm install
+pnpm test                              # 契约测试(packages/shared)
+docker-compose -f infra/docker-compose.yml up -d   # Postgres 16 / Redis 7 / ClickHouse
+pnpm export:schemas                    # zod → JSON Schema(gateway Python 侧校验用)
+```
+
+事件与投影的权威契约在 `packages/shared`(zod);变更契约必须重新导出 JSON Schema 并同步设计文档(architecture A5)。网关插件架构的可行性验证在 `test/litellm-spike/`。
+
 ## 预览产品文档
 
 ```bash

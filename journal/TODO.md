@@ -5,10 +5,10 @@
 
 ## M1 · 循环骨架(调用 → CP 记账可见),直接开工
 
-- [ ] **infra**:monorepo 骨架 pnpm + turborepo + `infra/docker-compose.yml`(Postgres 16 / Redis 7 / ClickHouse / Langfuse v3 / OpenBao)(architecture B1/B6)
-- [ ] **shared**:`usage.completed` 等 5 个事件的 zod schema(architecture A5)——第一个 PR,先于一切业务代码
-- [ ] **shared**:三个 Redis 投影的字段级 schema:平台 token 投影 / Key 路由投影 / 授权投影(architecture A4)
-- [ ] **gateway(第一步,验证最大风险)**:LiteLLM spike——验证 custom_auth / pre-call hook / success callback 三个扩展点能读 Redis 投影、注入解密 Key、组装 usage 事件;不成立则启动 Bifrost/自研预案(architecture A3 #1)
+- [x] **infra**:monorepo 骨架 pnpm + turborepo + `infra/docker-compose.yml`(Postgres 16 / Redis 7 / ClickHouse)(architecture B1/B6)(2026-07-26 完成;Langfuse v3 随 M2 telemetry、OpenBao 随 account Key 托管再加入,理由见 compose 头注释)
+- [x] **shared**:A5 全部 7 个事件的 zod schema + JSON Schema 导出(architecture A5)——第一个 PR,先于一切业务代码(2026-07-26 完成,15 测试含 spike 真实事件回归)
+- [x] **shared**:三个 Redis 投影的字段级 schema:平台 token 投影 / Key 路由投影 / 授权投影(architecture A4)(2026-07-26 完成)
+- [x] **gateway(第一步,验证最大风险)**:LiteLLM spike——验证 custom_auth / pre-call hook / success callback 三个扩展点能读 Redis 投影、注入解密 Key、组装 usage 事件;不成立则启动 Bifrost/自研预案(architecture A3 #1)(2026-07-25 完成,6/6 断言通过,`test/litellm-spike/`,结论见 WORKLOG)
 - [ ] **gateway**:LiteLLM Proxy 部署 + 3 个自研插件:platform_auth / key_resolver / usage_publisher(含本地 spool),Langfuse 隐私走内置 callback(architecture A4);provider 首发 5 家含火山方舟(tech-design §1.1);**验收含双协议:OpenAI 兼容 + Anthropic `/v1/messages`(Claude Code 接入硬需求,tech-design §2.2)**
 - [ ] **web**:接入指南页(控制台一等公民):选工具 → 生成配置片段,覆盖 Claude Code / Codex CLI / Cline / Cursor / Trae(tech-design §2.2)
 - [ ] **billing**:PostgreSQL 迁移 users / provider_keys / ledger_entries / credit_rules(architecture B3),ledger 双录一致性约束;初始参数 1000 CP/USD、服务费 5%
