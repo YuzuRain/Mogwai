@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>DigMon · 核心玩法与功能循环 — 产品文档</title>
+<style>
+  :root{
+    --bg:#ffffff;
+    --text:#0d0d0d;
+    --muted:#6e6e6e;
+    --faint:#9b9b9b;
+    --line:#e6e6e6;
+    --line2:#d4d4d4;
+    --fill:#f7f7f7;
+    --black:#0d0d0d;
+    --radius:12px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Noto Sans SC","Segoe UI",Helvetica,Arial,sans-serif;
+    background:var(--bg);color:var(--text);line-height:1.75;
+    font-size:15px;
+  }
+  .wrap{max-width:680px;margin:0 auto;padding:0 24px 96px}
+
+  /* ---------- hero ---------- */
+  header{padding:88px 0 56px;border-bottom:1px solid var(--line)}
+  .badge{
+    display:inline-block;font-size:11px;letter-spacing:.14em;color:var(--muted);
+    border:1px solid var(--line2);border-radius:999px;padding:3px 12px;margin-bottom:28px;
+    text-transform:uppercase;
+  }
+  h1{font-size:44px;line-height:1.15;font-weight:700;letter-spacing:-.02em}
+  .sub{color:var(--muted);margin-top:18px;font-size:17px;line-height:1.7}
+  .sub strong{color:var(--text);font-weight:600}
+  .meta{margin-top:24px;font-size:12.5px;color:var(--faint)}
+
+  /* ---------- section ---------- */
+  section{margin-top:72px}
+  .sec-tag{font-size:11px;color:var(--faint);letter-spacing:.18em;font-weight:600;text-transform:uppercase}
+  h2{font-size:26px;margin:10px 0 18px;font-weight:700;letter-spacing:-.01em}
+  h3{font-size:16px;margin:28px 0 10px;font-weight:600}
+  p{color:var(--muted);font-size:15px}
+  strong{color:var(--text);font-weight:600}
+
+  .card{
+    border:1px solid var(--line);border-radius:var(--radius);
+    padding:22px;margin-top:16px;
+  }
+  .card h3{margin-top:0}
+  .card h3:not(:first-child){margin-top:24px}
+
+  /* ---------- loops ---------- */
+  .loop{counter-reset:step;margin-top:16px}
+  .loop-item{
+    display:flex;gap:16px;border:1px solid var(--line);border-radius:var(--radius);
+    padding:16px 18px;margin-bottom:8px;
+  }
+  .loop-item .num{
+    counter-increment:step;flex:0 0 30px;height:30px;border-radius:50%;
+    background:var(--black);color:#fff;
+    display:flex;align-items:center;justify-content:center;font-weight:600;font-size:14px;
+  }
+  .loop-item .num::before{content:counter(step)}
+  .loop-item b{display:block;font-size:15px;margin-bottom:1px;font-weight:600}
+  .loop-item span{font-size:13.5px;color:var(--muted)}
+  .loop-arrow{text-align:center;color:var(--faint);font-size:13px;margin:2px 0 10px}
+
+  .subloop{border:1px solid var(--line);border-radius:var(--radius);padding:20px 22px;margin-top:12px}
+  .subloop .freq{
+    float:right;font-size:11px;border:1px solid var(--line2);border-radius:6px;
+    padding:1px 8px;font-weight:500;color:var(--muted);letter-spacing:.04em;
+  }
+  .subloop b{font-size:15.5px;font-weight:600}
+  .subloop .flow{
+    margin-top:10px;font-size:13.5px;color:var(--text);
+    background:var(--fill);border-radius:8px;padding:12px 14px;line-height:2;
+  }
+  .subloop .why{margin-top:10px;font-size:13.5px}
+  .subloop .why b{font-size:13.5px}
+
+  /* ---------- table ---------- */
+  table{width:100%;border-collapse:collapse;margin-top:14px;font-size:13.5px}
+  th,td{padding:11px 12px;text-align:left;border-bottom:1px solid var(--line)}
+  tr:last-child td{border-bottom:none}
+  th{color:var(--faint);font-weight:600;font-size:12px;white-space:nowrap;letter-spacing:.06em;text-transform:uppercase}
+  td{color:var(--muted)}
+  td:first-child{color:var(--text);font-weight:600;white-space:nowrap}
+  .table-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:var(--radius);padding:2px 10px;margin-top:16px}
+
+  /* ---------- persona ---------- */
+  .persona{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:16px}
+  @media(max-width:520px){.persona{grid-template-columns:1fr}}
+  .p-card{border:1px solid var(--line);border-radius:var(--radius);padding:20px}
+  .p-card h4{font-size:15.5px;font-weight:700;margin-bottom:2px}
+  .p-card .style{font-size:12.5px;color:var(--faint);margin-bottom:14px}
+  .p-card .build{font-size:13px;margin-top:14px;line-height:1.9;color:var(--muted);border-top:1px solid var(--line);padding-top:12px}
+  .p-card .build b{color:var(--text)}
+
+  .bar-row{display:flex;align-items:center;gap:10px;margin-top:7px;font-size:12px}
+  .bar-row .lb{flex:0 0 48px;color:var(--muted);text-align:right}
+  .bar-row .bar{flex:1;height:6px;background:var(--fill);border-radius:4px;overflow:hidden}
+  .bar-row .bar i{display:block;height:100%;border-radius:4px;background:#c9c9c9}
+  .bar-row .bar i.hi{background:var(--black)}
+  .bar-row .vv{flex:0 0 30px;color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+
+  /* ---------- formula ---------- */
+  .formula{
+    font-family:"SF Mono",Menlo,Consolas,monospace;font-size:12.5px;
+    background:var(--fill);border-radius:10px;
+    padding:16px;color:var(--text);overflow-x:auto;margin-top:14px;white-space:pre;line-height:1.9;
+  }
+  .formula .c{color:var(--faint)}
+
+  /* ---------- rarity ---------- */
+  .pill{
+    display:inline-block;border:1px solid var(--line2);border-radius:7px;
+    padding:2px 10px;font-size:12px;font-weight:600;margin-right:6px;color:var(--muted);
+  }
+  .pill.ur{background:var(--black);color:#fff;border-color:var(--black)}
+  .pill.sr{border-color:var(--black);color:var(--text)}
+
+  /* ---------- battle ---------- */
+  .blog{
+    background:var(--fill);border-radius:10px;padding:16px 18px;margin-top:14px;
+    font-size:13.5px;line-height:2.1;color:var(--muted);
+  }
+  .blog .t{color:var(--faint);font-size:11px;letter-spacing:.12em}
+  .blog .me,.blog .op{color:var(--text);font-weight:600}
+  .blog .dmg{color:var(--text);font-weight:700}
+  .blog .sys{color:var(--faint)}
+  .blog .win{color:var(--text);font-weight:700}
+
+  .hpbar{height:6px;border-radius:4px;background:var(--fill);overflow:hidden;margin-top:8px}
+  .hpbar i{display:block;height:100%;border-radius:4px;background:var(--black)}
+  .vs{display:grid;grid-template-columns:1fr 40px 1fr;align-items:center;gap:6px;margin-top:16px}
+  .fighter{border:1px solid var(--line);border-radius:10px;padding:14px}
+  .fighter b{font-size:14px;font-weight:600}
+  .fighter .lv{font-size:11px;color:var(--faint)}
+  .vs .x{text-align:center;font-weight:700;color:var(--faint);font-size:13px}
+
+  .callout{
+    border-left:2px solid var(--black);
+    padding:4px 0 4px 18px;margin-top:18px;font-size:14px;color:var(--muted);
+  }
+  .callout strong{color:var(--text)}
+
+  /* ---------- journey ---------- */
+  .rm{margin-top:16px;position:relative;padding-left:24px}
+  .rm::before{content:"";position:absolute;left:5px;top:8px;bottom:8px;width:1px;background:var(--line2)}
+  .rm-item{position:relative;padding:0 0 24px}
+  .rm-item:last-child{padding-bottom:0}
+  .rm-item::before{
+    content:"";position:absolute;left:-23px;top:8px;width:9px;height:9px;border-radius:50%;
+    background:var(--bg);border:2px solid var(--black);
+  }
+  .rm-item b{font-size:15px;font-weight:600}
+  .rm-item span{display:block;font-size:13.5px;color:var(--muted);margin-top:2px}
+
+  /* ---------- sitemap ---------- */
+  .map{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:16px}
+  @media(max-width:480px){.map{grid-template-columns:1fr}}
+  .map-card{border:1px solid var(--line);border-radius:var(--radius);padding:18px}
+  .map-card b{font-size:14px;display:block;margin-bottom:4px;font-weight:600}
+  .map-card span{font-size:12.5px;color:var(--muted);line-height:1.8;display:block}
+
+  footer{
+    margin-top:88px;padding-top:28px;border-top:1px solid var(--line);
+    text-align:center;font-size:12px;color:var(--faint);line-height:2;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="badge">Product Doc · v0.2 · 核心玩法版</div>
+    <h1>DigMon</h1>
+    <p class="sub">你怎么用 AI,决定你的数码兽长成什么样。<br>本文档只讲一件事:<strong>玩法怎么玩,循环怎么转</strong>。</p>
+    <p class="meta">技术实现见 tech-design.md · 架构见 architecture.md · 待决策项见 REVIEW.md</p>
+  </header>
+
+  <!-- ================= 核心幻想 ================= -->
+  <section>
+    <div class="sec-tag">01 · Core Fantasy</div>
+    <h2>核心幻想:用法即天赋</h2>
+    <p>每个重度 AI 用户都有自己的「手感」:有人一句短指令直出代码,有人一段长 prompt 反复打磨文案,有人对 AI 的输出逐字审查。这些差异日常是不可见的。</p>
+    <p style="margin-top:12px"><strong>DigMon 把它可视化成一只兽。</strong>你不需要为游戏做任何额外的事——继续像平常一样通过平台调模型干活,你的使用风格会自动塑造它的六维属性,烧掉的 token 自动变成它的经验值。<strong>游戏是工作的副产品,而不是另一份工作。</strong></p>
+    <p style="margin-top:12px">然后你带着这只「你自己的镜像」去和别的训练师对战——赌注是真金白银的 Credit Point(CP,平台统一货币,由你托管的模型 Key 折算而来)。</p>
+    <div class="callout">设计原则:<strong>零额外操作产生养成,养成产生对战欲望,对战胜负回流到 AI 使用本身(CP)。</strong>任何破坏「副产品感」的设计(强制签到、体力值、必须手动喂养)都不做。</div>
+  </section>
+
+  <!-- ================= 功能循环 ================= -->
+  <section>
+    <div class="sec-tag">02 · Game Loops</div>
+    <h2>功能循环:一个主循环,三个嵌套子循环</h2>
+
+    <h3>主循环(整个产品为什么转得起来)</h3>
+    <div class="loop">
+      <div class="loop-item"><div class="num"></div><div><b>用 AI 干活</b><span>通过统一网关调任意模型,BYOK 或 CP 计价,工作流零改动</span></div></div>
+      <div class="loop-arrow">↓ 自动发生,无需操作</div>
+      <div class="loop-item"><div class="num"></div><div><b>兽在变强</b><span>使用风格 → 努力值六维;token 消耗 → EXP → 升级 → 抽技能</span></div></div>
+      <div class="loop-arrow">↓ 变强产生「想验证」的冲动</div>
+      <div class="loop-item"><div class="num"></div><div><b>对战验证</b><span>质押 CP 匹配对战,赢家拿走输家质押的一部分</span></div></div>
+      <div class="loop-arrow">↺ 赢来的 CP 用于继续调模型,回到 1</div>
+    </div>
+    <p style="margin-top:12px">关键在闭环的最后一步:<strong>对战的战利品(CP)恰好是干活的燃料</strong>。赢了想多用 AI(反正 token 免费了),多用 AI 兽更强,更强更想打——三个环节互为因果。</p>
+
+    <h3>三个子循环(不同时间尺度的钩子)</h3>
+
+    <div class="subloop">
+      <span class="freq">分钟级 · 每次调用</span>
+      <b>使用循环</b>
+      <div class="flow">发 prompt → 网关代理 → 屏幕角落 EXP +37 飘字 / EV 微量增长提示</div>
+      <p class="why"><b>钩子:</b>即时反馈。每一次日常调用都有一个微小的可见奖励,把「干活」重新编码为「练级」。反馈必须轻(角标/飘字),不打断工作。</p>
+    </div>
+
+    <div class="subloop">
+      <span class="freq">天级 · 每日结算</span>
+      <b>成长循环</b>
+      <div class="flow">当日行为特征结算 → EV 六维变动报告 → 升级则获得抽卡券 → 抽卡 → 决定是否替换 4 技能槽</div>
+      <p class="why"><b>钩子:</b>每天一次「开箱时刻」。EV 报告告诉你「今天你更像速攻手了」,抽卡给随机奖励,配招给决策深度。这是每天打开 App 的理由。</p>
+    </div>
+
+    <div class="subloop">
+      <span class="freq">周级 · 主动触发</span>
+      <b>对战循环</b>
+      <div class="flow">选质押档位 → 匹配 → 60 秒自动战斗演出 → 结算 CP → 复盘(哪维属性/哪个技能是短板)→ 影响下周的使用与养成方向</div>
+      <p class="why"><b>钩子:</b>输赢有真实代价(CP),复盘产生养成目标——「速度被压制了,这周多打点短平快的活」。<strong>对战结果反过来引导 AI 使用行为</strong>,这是别的养成游戏做不到的一环。</p>
+    </div>
+  </section>
+
+  <!-- ================= 养成玩法 ================= -->
+  <section>
+    <div class="sec-tag">03 · Training</div>
+    <h2>养成玩法:六维怎么被你的行为塑造</h2>
+
+    <p>六维努力值(EV),每项上限 252、总和上限 510(宝可梦规则)——<strong>上限意味着你必须有所取舍,没人能六边形</strong>,这是构筑多样性的来源。</p>
+
+    <div class="table-scroll">
+      <table>
+        <tr><th>属性</th><th>被什么行为喂养</th><th>战斗中的作用</th></tr>
+        <tr><td>HP 体力</td><td>活跃天数、会话时长、连续 streak</td><td>血量,耐久底盘</td></tr>
+        <tr><td>攻击</td><td>短指令直出、输出一次采纳、代码生成</td><td>物理技能伤害</td></tr>
+        <tr><td>防御</td><td>报错后修复、重试成功、约束型 prompt</td><td>承受物理伤害</td></tr>
+        <tr><td>特攻</td><td>长 prompt 创意任务、工具调用、多模态</td><td>特殊技能伤害</td></tr>
+        <tr><td>特防</td><td>编辑 AI 输出、追问、纠正幻觉</td><td>承受特殊伤害</td></tr>
+        <tr><td>速度</td><td>请求节奏快、短平快任务占比高</td><td>先手权</td></tr>
+      </table>
+    </div>
+
+    <h3>同样用 AI,养出完全不同的兽</h3>
+    <div class="persona">
+      <div class="p-card">
+        <h4>速攻手</h4>
+        <div class="style">后端工程师 · 高频短指令写代码</div>
+        <div class="bar-row"><span class="lb">HP</span><div class="bar"><i style="width:35%"></i></div><span class="vv">88</span></div>
+        <div class="bar-row"><span class="lb">攻击</span><div class="bar"><i class="hi" style="width:90%"></i></div><span class="vv">226</span></div>
+        <div class="bar-row"><span class="lb">防御</span><div class="bar"><i style="width:25%"></i></div><span class="vv">62</span></div>
+        <div class="bar-row"><span class="lb">特攻</span><div class="bar"><i style="width:12%"></i></div><span class="vv">30</span></div>
+        <div class="bar-row"><span class="lb">特防</span><div class="bar"><i style="width:10%"></i></div><span class="vv">24</span></div>
+        <div class="bar-row"><span class="lb">速度</span><div class="bar"><i class="hi" style="width:32%"></i></div><span class="vv">80</span></div>
+        <div class="build"><b>打法:</b>先手速攻,高威力物理技能两回合内定胜负;怕耗,怕特殊系厚盾。</div>
+      </div>
+      <div class="p-card">
+        <h4>重炮手</h4>
+        <div class="style">内容创作者 · 长 prompt 反复打磨审查</div>
+        <div class="bar-row"><span class="lb">HP</span><div class="bar"><i style="width:45%"></i></div><span class="vv">112</span></div>
+        <div class="bar-row"><span class="lb">攻击</span><div class="bar"><i style="width:8%"></i></div><span class="vv">20</span></div>
+        <div class="bar-row"><span class="lb">防御</span><div class="bar"><i style="width:16%"></i></div><span class="vv">40</span></div>
+        <div class="bar-row"><span class="lb">特攻</span><div class="bar"><i class="hi" style="width:84%"></i></div><span class="vv">210</span></div>
+        <div class="bar-row"><span class="lb">特防</span><div class="bar"><i class="hi" style="width:51%"></i></div><span class="vv">128</span></div>
+        <div class="bar-row"><span class="lb">速度</span><div class="bar"><i style="width:4%"></i></div><span class="vv">10</span></div>
+        <div class="build"><b>打法:</b>后手厚盾重炮,扛过第一轮爆发后特殊技能碾压;怕被速攻抢节奏。</div>
+      </div>
+    </div>
+    <p style="margin-top:12px">两人都只是正常干活,但构筑天然互克——<strong>「你是什么样的 AI 用户」直接成为对战 meta 的一部分</strong>。想改 build?改变你的使用习惯,或用「营养饮料」道具定向微调(单项道具加成上限 100,不能全靠买)。</p>
+
+    <h3>个体差异:种族值 × 个体值 × 努力值</h3>
+    <div class="card">
+      <p><strong>种族值:</strong>建号时从若干初始种族中选一只(偏攻/偏防/偏速的底子),决定成长倾向。</p>
+      <p style="margin-top:10px"><strong>个体值(IV):</strong>出生随机 0~31,同种族也有天赋差异,制造「我的兽是独一无二的」感。</p>
+      <p style="margin-top:10px"><strong>努力值(EV):</strong>上面讲的行为塑造部分,是玩家唯一能主动经营的变量——<strong>天赋随机,努力自选</strong>。</p>
+      <p style="margin-top:10px">三者按宝可梦三代公式合成面板,数值手感有二十年的成熟体系背书。</p>
+    </div>
+  </section>
+
+  <!-- ================= 升级与技能 ================= -->
+  <section>
+    <div class="sec-tag">04 · Level &amp; Skills</div>
+    <h2>升级与技能:token 是经验,配招是策略</h2>
+
+    <div class="card">
+      <h3>token → EXP → 升级</h3>
+      <p>每次调用的 token 按次线性公式转 EXP(输出 token 权重更高,代表真实产出;次幂 0.9 + 日上限压制刷量)。等级曲线用宝可梦中速组 L³:<strong>前期几乎每天升级(爽感),后期一级要攒几天(期待感)</strong>。</p>
+      <div class="formula">exp = 0.05 × (输入token×0.3 + 输出token×1.0)<sup>0.9</sup>
+<span class="c"># 重度用户日常一天 ≈ 升 1~2 级(前中期)</span></div>
+    </div>
+
+    <div class="card">
+      <h3>升级的唯一奖励:抽卡券</h3>
+      <p>每升 1 级 = 1 张券,每 10 级额外十连。技能池按稀有度分层,十连保 SR、80 抽硬保底 UR、重复转碎片:</p>
+      <p style="margin-top:12px">
+        <span class="pill">N · 60%</span><span class="pill">R · 30%</span><span class="pill sr">SR · 9%</span><span class="pill ur">UR · 1%</span>
+      </p>
+      <p style="margin-top:12px">把升级奖励收敛到抽卡这一件事上,是为了让「日常干活 → 随机惊喜」的路径最短、最纯粹。</p>
+    </div>
+
+    <div class="card">
+      <h3>4 技能槽:玩法深度所在</h3>
+      <p>技能有属性(参与克制表)、物理/特殊/变化分类、威力/命中/PP。仓库不限,但<strong>上场只能带 4 个</strong>——取舍即策略:</p>
+      <p style="margin-top:10px">· 全高威力?PP 少,拖入持久战会「挣扎」。<br>
+         · 带变化技(降攻/麻痹)?牺牲爆发换控制。<br>
+         · 技能属性要和自己的高 EV 匹配:物理技吃攻击面板,特殊技吃特攻——<strong>速攻手抽到 UR 特殊技能也白搭</strong>,于是产生「为一张卡改变使用习惯」的长线动机。</p>
+    </div>
+  </section>
+
+  <!-- ================= 对战玩法 ================= -->
+  <section>
+    <div class="sec-tag">05 · Battle</div>
+    <h2>对战玩法:60 秒定胜负,输赢动真格</h2>
+
+    <div class="card">
+      <h3>赛前:三个决策</h3>
+      <p><strong>① 质押档位</strong>(100 / 500 / 2000 CP)——赌多大;<strong>② 技能配置</strong>——带哪 4 个;<strong>③ 策略倾向</strong>(激进 / 均衡 / 保守)——自动战斗时的技能选择权重。决策全部在赛前,战斗本身零操作。</p>
+    </div>
+
+    <div class="card">
+      <h3>战中:回合制自动战斗,60 秒演出</h3>
+      <p>速度决定先手 → 命中判定 → 伤害(宝可梦公式:攻防比 × 威力 × 属性克制 × STAB × 暴击)→ 特效结算。30 回合未分胜负按剩余 HP% 判胜。可跳过动画直接看结果。</p>
+      <div class="vs">
+        <div class="fighter">
+          <b>速攻手</b> <span class="lv">Lv.42</span>
+          <div class="hpbar"><i style="width:64%"></i></div>
+        </div>
+        <div class="x">VS</div>
+        <div class="fighter">
+          <b>重炮手</b> <span class="lv">Lv.40</span>
+          <div class="hpbar"><i style="width:78%"></i></div>
+        </div>
+      </div>
+      <div class="blog">
+        <span class="t">TURN 1</span><br>
+        <span class="me">速攻手</span> 抢得先手!使用「极速重构」 <span class="dmg">−72</span><br>
+        <span class="op">重炮手</span> 使用「灵感风暴」 效果拔群!<span class="dmg">−98</span><br>
+        <span class="t">TURN 2</span><br>
+        <span class="me">速攻手</span> 使用「一击采纳」 会心一击!<span class="dmg">−121</span><br>
+        <span class="sys">重炮手 倒下了…</span><br>
+        <span class="win">速攻手 获胜!赢得 135 CP</span>
+      </div>
+      <p style="margin-top:12px">战斗是服务端确定性模拟(同一种子必然同一结果),每一场都可回放、可逐回合复盘——<strong>复盘正是引导玩家回到养成循环的入口</strong>:「输在速度被压,这周多打短平快任务」。</p>
+    </div>
+
+    <div class="card">
+      <h3>赛后:CP 结算</h3>
+      <p>败方损失质押的 <strong>30%</strong>,其中一成为平台抽成、九成归胜方;平局各扣 2%。赢来的 CP 直接回到主循环——<strong>下一批 token 免费了</strong>。</p>
+      <p style="margin-top:10px">匹配基于 Glicko-2 评分 + 综合战力(等级/EV/技能),同质押档撮合;90 秒匹配不到真人时可选打「幽灵队伍」(真实玩家快照代打,明确标注,质押减半)。</p>
+    </div>
+  </section>
+
+  <!-- ================= 玩家旅程 ================= -->
+  <section>
+    <div class="sec-tag">06 · Player Journey</div>
+    <h2>玩家旅程:从第一次调用到第一次复仇</h2>
+    <div class="rm">
+      <div class="rm-item"><b>第 0 天 · 接入(10 分钟)</b><span>托管 Key → 选初始种族 → 掷出个体值 → 把 base_url 换成平台网关。从此正常干活。</span></div>
+      <div class="rm-item"><b>第 1~3 天 · 觉醒</b><span>每次调用看到 EXP 飘字;第一份 EV 日报:「你的攻击 +6,你是个直球型选手」。升到 5 级,第一次抽卡。</span></div>
+      <div class="rm-item"><b>第 1 周 · 首战</b><span>凑齐 4 技能,打第一场 100 CP 档(新手保护:前 10 场败损减半)。赢:白嫖了一顿 token;输:复盘页告诉你短板在哪。</span></div>
+      <div class="rm-item"><b>第 2~4 周 · 经营</b><span>为了补速度短板,有意识地改变使用节奏;攒碎片合成缺的属性技能;开始打 500 档,盯着宿敌的主页等他上线。</span></div>
+      <div class="rm-item"><b>长期 · meta 演化</b><span>使用习惯 → 构筑 → 对战 meta → 反过来影响使用习惯。产品的长线内容不是做出来的,是玩家群体的 AI 使用方式演化出来的。</span></div>
+    </div>
+  </section>
+
+  <!-- ================= 功能地图 ================= -->
+  <section>
+    <div class="sec-tag">07 · Feature Map</div>
+    <h2>功能地图:五个页面撑起全部循环</h2>
+    <div class="map">
+      <div class="map-card"><b>训练师主页</b><span>兽的形象与面板、六维雷达、今日 EXP/EV 变动、等级进度。成长循环的主入口。</span></div>
+      <div class="map-card"><b>抽卡 &amp; 技能仓库</b><span>抽卡演出、保底进度、技能列表、4 槽装配、碎片合成。</span></div>
+      <div class="map-card"><b>对战大厅</b><span>质押选档、匹配、战斗演出播放器、战绩与回放列表、复盘页。</span></div>
+      <div class="map-card"><b>控制台</b><span>Key 托管、模型列表、CP 余额与账单(逐笔可追溯折算公式)、用量报表。工具属性的根基。</span></div>
+      <div class="map-card"><b>EV 日报</b><span>每日推送:六维变动 + 归因(「因为你今天重试后修复了 12 次错误,防御 +4」)。让数据采集变成玩家福利而非隐私焦虑。</span></div>
+    </div>
+    <div class="callout">刻意不做的:公会/社交系统、体力值、每日签到、Chat UI、装备强化。任何不直接服务于「用 AI → 变强 → 对战」三环的功能,首版一律砍掉。</div>
+  </section>
+
+  <footer>
+    DigMon Product Doc v0.2(核心玩法版)· 2026-07<br>
+    商业化 / 反作弊 / 合规 / 排期等实现层内容 → tech-design.md · architecture.md · REVIEW.md
+  </footer>
+</div>
+</body>
+</html>
