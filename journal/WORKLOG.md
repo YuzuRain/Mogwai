@@ -87,3 +87,12 @@
 - 其他确认:1000 CP/USD + 服务费 5%;明文默认开(数据全量回流为核心诉求);技能池 40;TS 全栈(单人团队,按「只选对的」标准);不做 Demo 直接 M1;里程碑按范围验收不设周期
 - product.html 同步(v0.2 → v0.3);journal/TODO.md 按模块重组,新增长线区(双人审批、数据回流专项、CLI addon、Bifrost 预案)
 **引用**: docs/REVIEW.md 汇总表 · docs/tech-design.md §1.4/§5/§6/§7/§10 · docs/product.html · journal/TODO.md
+
+## 2026-07-25 · 架构总览图评审修正并嵌入 README
+
+**目的**: 开发分模块动工前,确认顶层架构图简洁清晰,并放到 README 作为仓库门面
+**改动**:
+- architecture.md A1 图修正三处:Redis→app 边的「消费组×4」改为「领域事件(消费组互相独立)」(原数字只对 usage.completed 成立);网关读 Redis 边点明「读三投影:token/Key/授权」;补 realtime -.-> Web 的 Socket.IO 推送边(即时反馈闭环原先在图上断裂)
+- README 新增「架构总览」章节,嵌入与 A1 同源的 mermaid 图,两处互相标注「改动时一起更新」
+- 修正过期命名:README 关键架构决策与 journal/TODO.md M1 gateway 项中的网关插件名统一为 platform_auth / key_resolver / usage_publisher(与 architecture A4 / tech-design §2.5 对齐;旧文本残留 auth_projection / 隐私回调)
+**引用**: docs/architecture.md A1 · README.md · journal/TODO.md

@@ -8,7 +8,7 @@
 - [ ] **infra**:monorepo 骨架 pnpm + turborepo + `infra/docker-compose.yml`(Postgres 16 / Redis 7 / ClickHouse / Langfuse v3 / OpenBao)(architecture B1/B6)
 - [ ] **shared**:`usage.completed` 等 5 个事件的 zod schema(architecture A5)——第一个 PR,先于一切业务代码
 - [ ] **shared**:三个 Redis 投影的字段级 schema:平台 token 投影 / Key 路由投影 / 授权投影(architecture A4)
-- [ ] **gateway**:LiteLLM Proxy 部署 + 3 个自研插件:auth_projection / usage_publisher(含本地 spool)/ langfuse 隐私回调;provider 首发 5 家含火山方舟(tech-design §1.1)
+- [ ] **gateway**:LiteLLM Proxy 部署 + 3 个自研插件:platform_auth / key_resolver / usage_publisher(含本地 spool),Langfuse 隐私走内置 callback(architecture A4);provider 首发 5 家含火山方舟(tech-design §1.1)
 - [ ] **billing**:PostgreSQL 迁移 users / provider_keys / ledger_entries / credit_rules(architecture B3),ledger 双录一致性约束;初始参数 1000 CP/USD、服务费 5%
 - [ ] **core-app**:REST API 面设计:端点、错误码、鉴权方式(目前文档只有模块边界没有 API 面)
 - [ ] **workers**:每日对账 BullMQ 任务:ledger vs LiteLLM 请求日志(tech-design §2.3)

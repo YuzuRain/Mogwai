@@ -25,9 +25,58 @@
         → 回到日常调用
 ```
 
+## 架构总览
+
+> 源图与详细说明见 [docs/architecture.md](docs/architecture.md) A1;改动时两处一起更新。
+
+```mermaid
+flowchart TB
+    subgraph clients [接入层]
+      APP[用户应用 / IDE / Agent<br/><i>任意 OpenAI 兼容 SDK</i>]
+      WEB[控制台 + 对战 H5<br/><b>Next.js</b> App Router]
+      TSDK[行为采集<br/><b>tracking-sdk(自研薄 SDK)</b>]
+    end
+
+    subgraph edge [网关层 · 独立部署 · 可替换运行时]
+      GW[LLM Gateway<br/><b>LiteLLM Proxy(自托管)</b><br/>+ mogwai 插件 ×3:<br/>platform_auth / key_resolver / usage_publisher]
+    end
+
+    subgraph app [应用层 · core-app<br/><b>NestJS 模块化单体</b>(API + Worker 两种入口)]
+      ACC[account<br/>用户/认证/Key 托管]
+      BILL[billing<br/>公式引擎 + 复式账本]
+      TELE[telemetry<br/>事件入库/关联]
+      GAME[game<br/>EV/EXP/抽卡/日报]
+      MATCH[match<br/>Glicko-2 匹配]
+      BATTLE[battle<br/>模拟/复盘/结算]
+      RT[realtime<br/><b>Socket.IO</b> 推送]
+      ADMIN[admin<br/>配置中心/后台]
+    end
+
+    subgraph data [数据与基础设施层]
+      RD[(<b>Redis 7</b><br/>Streams 事件总线<br/>+ 匹配队列 + 缓存)]
+      PG[(<b>PostgreSQL 16</b><br/>业务 + 账本<br/>ORM: drizzle)]
+      CH[(<b>ClickHouse</b><br/>行为事件 + EV 特征<br/>与 Langfuse 共用实例)]
+      LF[<b>Langfuse v3 自托管</b><br/>LLM trace / prompt 观测]
+      KMS[<b>云 KMS / OpenBao Transit</b><br/>Provider Key 信封加密]
+    end
+
+    APP -->|/v1/chat/completions| GW
+    WEB -->|REST| app
+    RT -.->|Socket.IO 推送| WEB
+    TSDK -->|behavior.tracked| TELE
+    GW -->|读三投影:token / Key / 授权| RD
+    GW -->|usage.completed| RD
+    GW -->|trace(内置 callback)| LF
+    GW -->|解密 DEK| KMS
+    RD -->|领域事件(消费组互相独立)| app
+    app --> PG
+    app --> CH
+    ACC --> KMS
+```
+
 ## 关键架构决策
 
-- **模块化单体 + 独立网关**:核心应用为 NestJS 模块化单体;LLM 网关采用自托管 LiteLLM Proxy 加三个自研插件(鉴权投影、usage 事件发布、隐私回调),定义为可替换运行时。网关与游戏域通过 Redis Streams 事件总线解耦,游戏域故障不影响 AI 代理主链路。
+- **模块化单体 + 独立网关**:核心应用为 NestJS 模块化单体;LLM 网关采用自托管 LiteLLM Proxy 加三个自研薄插件(platform_auth 鉴权、key_resolver Key 路由与债务清偿、usage_publisher 用量事件发布),定义为可替换运行时。网关只依赖 Redis 投影与 KMS,不触业务库;与应用层通过 Redis Streams 事件总线解耦,游戏域故障不影响 AI 代理主链路。
 - **计费权威在应用侧**:网关只发布 usage 事件,权威账本(复式记账)由应用侧 ledger 模块维护,每日与网关日志对账。
 - **合约化执行**:计费、抽卡、对战等有经济后果的执行,在发起时刻绑定不可变的规则版本与参数快照,保证可审计、可重放。
 - **确定性战斗引擎**:纯函数实现(`packages/battle-core`),同一种子必得同一结果,前后端同构,天然支持回放与复盘。

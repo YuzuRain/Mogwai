@@ -42,17 +42,20 @@ flowchart TB
     end
 
     APP -->|/v1/chat/completions| GW
-    WEB --> app
+    WEB -->|REST| app
+    RT -.->|Socket.IO 推送| WEB
     TSDK -->|behavior.tracked| TELE
-    GW -->|Key 路由缓存 读| RD
-    GW -->|usage.completed 写| RD
-    GW -->|内置 callback| LF
+    GW -->|读三投影:token / Key / 授权| RD
+    GW -->|usage.completed| RD
+    GW -->|trace(内置 callback)| LF
     GW -->|解密 DEK| KMS
-    RD -->|消费组×4| app
+    RD -->|领域事件(消费组互相独立)| app
     app --> PG
     app --> CH
     ACC --> KMS
 ```
+
+> 本图同步嵌入 [README](../README.md);改动时两处一起更新。
 
 三条铁律:
 
