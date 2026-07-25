@@ -82,6 +82,8 @@ flowchart LR
 
 ### 2.2 统一网关(OpenAI 兼容)
 
+> 网关运行时选型为 LiteLLM Proxy(自托管)+ 自研薄插件,且被定义为可替换组件,详见架构文档 Part A。本节只描述与运行时无关的行为契约。
+
 - 对外暴露 `POST /v1/chat/completions`(以及 `/v1/embeddings` 等),入参兼容 OpenAI 协议,模型名采用 `provider/model` 形式(如 `anthropic/claude-sonnet-4`)。
 - 路由策略(按优先级):
   1. 用户自己托管的、匹配该模型的 Key(**BYOK 模式**,只收平台服务费);
