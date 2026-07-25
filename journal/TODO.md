@@ -1,27 +1,32 @@
 # TODO(集中待办)
 
 > 规则见 `.cursor/rules/session-journal.mdc`:所有跨会话待办只记在这里。完成打勾并注明日期;新发现的事项当场补进来。
+> 2026-07-25 全部 REVIEW Block 已裁定(docs/REVIEW.md 汇总表),待办按模块重组。
 
-## 待用户拍板(阻塞项)
+## M1 · 循环骨架(调用 → CP 记账可见),直接开工
 
-- [ ] `docs/REVIEW.md` 全部 Block 逐块过一遍并回填结论(Block 13 已裁定:纯记账制;其余 1–12 的默认值均未确认)
-  - 重点:产品名、折算公式默认参数、EV 周衰减系数、技能池规模与属性克制表、全自动 vs 半自动战斗、质押档位数值、隐私模式默认开关
-- [ ] 债务清偿模式(tech-design §10.3,败方 Key 承担胜方消耗)上线前过一次法务/合规确认:对 provider ToS 的影响、用户告知文案
+- [ ] **infra**:monorepo 骨架 pnpm + turborepo + `infra/docker-compose.yml`(Postgres 16 / Redis 7 / ClickHouse / Langfuse v3 / OpenBao)(architecture B1/B6)
+- [ ] **shared**:`usage.completed` 等 5 个事件的 zod schema(architecture A5)——第一个 PR,先于一切业务代码
+- [ ] **shared**:三个 Redis 投影的字段级 schema:平台 token 投影 / Key 路由投影 / 授权投影(architecture A4)
+- [ ] **gateway**:LiteLLM Proxy 部署 + 3 个自研插件:auth_projection / usage_publisher(含本地 spool)/ langfuse 隐私回调;provider 首发 5 家含火山方舟(tech-design §1.1)
+- [ ] **billing**:PostgreSQL 迁移 users / provider_keys / ledger_entries / credit_rules(architecture B3),ledger 双录一致性约束;初始参数 1000 CP/USD、服务费 5%
+- [ ] **core-app**:REST API 面设计:端点、错误码、鉴权方式(目前文档只有模块边界没有 API 面)
+- [ ] **workers**:每日对账 BullMQ 任务:ledger vs LiteLLM 请求日志(tech-design §2.3)
 
-## M1 开发(循环骨架:调用 → CP 记账可见)
+## M2+ · 模块设计时再定(不前置拍板)
 
-- [ ] monorepo 骨架:pnpm + turborepo + `infra/docker-compose.yml`(Postgres 16 / Redis 7 / ClickHouse / Langfuse v3 / OpenBao)(architecture B1/B6)
-- [ ] `packages/shared`:`usage.completed` 等 5 个事件的 zod schema(architecture A5),这是第一个 PR,先于一切业务代码
-- [ ] 三个 Redis 投影的字段级 schema:平台 token 投影 / Key 路由投影 / 授权投影(architecture A4)
-- [ ] LiteLLM Proxy 部署 + 3 个自研插件:auth_projection / usage_publisher(含本地 spool)/ langfuse 隐私回调(architecture A4)
-- [ ] PostgreSQL 迁移:users / provider_keys / ledger_entries / credit_rules(architecture B3),ledger 双录一致性约束
-- [ ] REST API 面设计:端点、错误码、鉴权方式(目前文档只有模块边界没有 API 面)
-- [ ] 每日对账 BullMQ 任务:ledger vs LiteLLM 请求日志(tech-design §2.3)
+- [ ] **game(M2)**:EV 特征清单(tech-design §5.1)细化为 ClickHouse 物化视图定义;IV 窄幅随机分配算法(总和 126、单项 13~29)落到注册流程
+- [ ] **battle(M2 末)**:`battle-core` 字段级契约:TrainerSnapshot / BattleConfig / TurnEvent(architecture A5)
+- [ ] **game(M3)**:技能池首批 40 个技能数值表(N 16 / R 13 / SR 8 / UR 3);属性体系首发用宝可梦 18,模块设计时重评估自创 AI 主题属性(REVIEW Block 7)
+- [ ] **battle(M3)**:战斗表现细节:动画时长、跳过交互(REVIEW Block 9)
+- [ ] **match(M4)**:质押档位数值(REVIEW Block 8)
+- [ ] **billing(M4)**:平台自营 Key 池 + CP 直购(margin 1.15),随支付启用(REVIEW Block 2)
+- [ ] **合规(M4 前)**:债务清偿模式(tech-design §10.3)过法务:败方 Key 承担胜方消耗对 provider ToS 的影响、用户告知文案
+- [ ] **game(M5)**:赛季机制 + EV 赛季重置规则(周衰减已取消,REVIEW Block 5);满级溢出 EXP 转赛季币;营养饮料等道具现金购买(依赖支付)
 
-## M2+(有依赖,暂不动手)
+## 长线(条件触发)
 
-- [ ] EV 特征清单(tech-design §5.1)细化为 ClickHouse 物化视图定义(M2)
-- [ ] `battle-core` 纯函数包的字段级契约:TrainerSnapshot / BattleConfig / TurnEvent(M2 末前定稿,architecture A5)
-- [ ] 技能池首批 50 个技能的数值表(tech-design §7.1,需先拍板属性克制体系)
-- [ ] 平台自营 Key 池 + CP 直购(用户已裁定推迟到 M4,REVIEW Block 2)
-- [ ] 营养饮料等道具改现金购买,依赖 M5 支付系统(tech-design §6.3)
+- [ ] 折算公式改动双人审批:多人协作后启用(当前单人审批,REVIEW Block 3)
+- [ ] 数据回流/数据资产专项设计:明文数据全量回流后的加工、隐私分级与商业化,「后面一定会有比较重的设计」(REVIEW Block 4)
+- [ ] 客户端形态演进:纯 CLI addon 方案评估(采集已钉网关,外壳可替换,tech-design §1.4 #5)
+- [ ] 网关替换预案:LiteLLM P99 不达标时切 Bifrost(architecture A3)

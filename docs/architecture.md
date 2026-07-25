@@ -1,4 +1,4 @@
-# DigMon 技术架构设计
+# Mogwai 技术架构设计
 
 > Architecture Design v0.4 · 配套文档:[技术设计](./tech-design.md) · [产品文档(H5)](./product.html)
 >
@@ -19,7 +19,7 @@ flowchart TB
     end
 
     subgraph edge [网关层 · 独立部署 · 可替换运行时]
-      GW[LLM Gateway<br/><b>LiteLLM Proxy(自托管)</b><br/>+ digmon 插件 ×3:<br/>platform_auth / key_resolver / usage_publisher]
+      GW[LLM Gateway<br/><b>LiteLLM Proxy(自托管)</b><br/>+ mogwai 插件 ×3:<br/>platform_auth / key_resolver / usage_publisher]
     end
 
     subgraph app [应用层 · core-app<br/><b>NestJS 模块化单体</b>(API + Worker 两种入口)]
@@ -129,7 +129,7 @@ flowchart TB
 ```
 gateway/(独立部署单元,非 TS monorepo 的一部分)
 ├── litellm-config.yaml        # 模型清单、平台 Key 池、路由/重试/熔断参数
-└── plugins/                   # digmon 扩展,全部逻辑 < 500 行,无业务规则
+└── plugins/                   # mogwai 扩展,全部逻辑 < 500 行,无业务规则
     ├── platform_auth.py       # custom_auth hook:平台 API token → user_id/trainer_id
     ├── key_resolver.py        # pre-call hook:查 Redis 投影 → 债务清偿路由 > BYOK > 平台池
     │                          #   → KMS 解密(内存中用完即弃)→ 注入本次请求
@@ -171,7 +171,7 @@ gateway/(独立部署单元,非 TS monorepo 的一部分)
 ## B1. Monorepo 目录结构
 
 ```
-digmon/
+mogwai/
 ├── gateway/                        # LLM 网关(LiteLLM 配置 + Python 插件,见 A4;独立部署)
 │
 ├── apps/

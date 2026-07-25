@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>DigMon · 核心玩法与功能循环 — 产品文档</title>
+<title>Mogwai · 核心玩法与功能循环 — 产品文档</title>
 <style>
   :root{
     --bg:#ffffff;
@@ -176,9 +176,9 @@
 <div class="wrap">
 
   <header>
-    <div class="badge">Product Doc · v0.2 · 核心玩法版</div>
-    <h1>DigMon</h1>
-    <p class="sub">你怎么用 AI,决定你的数码兽长成什么样。<br>本文档只讲一件事:<strong>玩法怎么玩,循环怎么转</strong>。</p>
+    <div class="badge">Product Doc · v0.3 · 核心玩法版</div>
+    <h1>Mogwai</h1>
+    <p class="sub">你怎么用 AI,决定你的魔怪长成什么样。<br>本文档只讲一件事:<strong>玩法怎么玩,循环怎么转</strong>。</p>
     <p class="meta">技术实现见 tech-design.md · 架构见 architecture.md · 待决策项见 REVIEW.md</p>
   </header>
 
@@ -187,7 +187,7 @@
     <div class="sec-tag">01 · Core Fantasy</div>
     <h2>核心幻想:用法即天赋</h2>
     <p>每个重度 AI 用户都有自己的「手感」:有人一句短指令直出代码,有人一段长 prompt 反复打磨文案,有人对 AI 的输出逐字审查。这些差异日常是不可见的。</p>
-    <p style="margin-top:12px"><strong>DigMon 把它可视化成一只兽。</strong>你不需要为游戏做任何额外的事——继续像平常一样通过平台调模型干活,你的使用风格会自动塑造它的六维属性,烧掉的 token 自动变成它的经验值。<strong>游戏是工作的副产品,而不是另一份工作。</strong></p>
+    <p style="margin-top:12px"><strong>Mogwai 把它可视化成一只魔怪。</strong>你不需要为游戏做任何额外的事——继续像平常一样通过平台调模型干活,你的使用风格会自动塑造它的六维属性,烧掉的 token 自动变成它的经验值。<strong>游戏是工作的副产品,而不是另一份工作。</strong></p>
     <p style="margin-top:12px">然后你带着这只「你自己的镜像」去和别的训练师对战——赌注是 Credit Point(CP,统一记账单位,由模型 token 成本折算而来):输了,你要用自己托管的 Key 替赢家扛一段 token 消耗。<strong>平台不碰赌注,只负责记账。</strong></p>
     <div class="callout">设计原则:<strong>零额外操作产生养成,养成产生对战欲望,对战胜负回流到 AI 使用本身(CP)。</strong>任何破坏「副产品感」的设计(强制签到、体力值、必须手动喂养)都不做。</div>
   </section>
@@ -281,7 +281,7 @@
     <h3>个体差异:种族值 × 个体值 × 努力值</h3>
     <div class="card">
       <p><strong>种族值:</strong>建号时从若干初始种族中选一只(偏攻/偏防/偏速的底子),决定成长倾向。</p>
-      <p style="margin-top:10px"><strong>个体值(IV):</strong>出生随机 0~31,同种族也有天赋差异,制造「我的兽是独一无二的」感。</p>
+      <p style="margin-top:10px"><strong>个体值(IV):</strong>出生随机,但总量人人相同、单项窄幅波动——天赋只决定倾向,不决定强弱,「我的魔怪是独一无二的」但没有出生不平等。</p>
       <p style="margin-top:10px"><strong>努力值(EV):</strong>上面讲的行为塑造部分,是玩家唯一能主动经营的变量——<strong>天赋随机,努力自选</strong>。</p>
       <p style="margin-top:10px">三者按宝可梦三代公式合成面板,数值手感有二十年的成熟体系背书。</p>
     </div>
@@ -294,7 +294,7 @@
 
     <div class="card">
       <h3>token → EXP → 升级</h3>
-      <p>每次调用的 token 按次线性公式转 EXP(输出 token 权重更高,代表真实产出;次幂 0.9 + 日上限压制刷量)。等级曲线用宝可梦中速组 L³:<strong>前期几乎每天升级(爽感),后期一级要攒几天(期待感)</strong>。</p>
+      <p>每次调用的 token 按次线性公式转 EXP(输出 token 权重更高,代表真实产出;次幂 0.9 + 日上限压制刷量)。等级曲线用宝可梦中速偏慢组(前期所需经验更低):<strong>新手期几乎每天升级(爽感),后期一级要攒几天(期待感)</strong>。</p>
       <div class="formula">exp = 0.05 × (输入token×0.3 + 输出token×1.0)<sup>0.9</sup>
 <span class="c"># 重度用户日常一天 ≈ 升 1~2 级(前中期)</span></div>
     </div>
@@ -355,7 +355,7 @@
 
     <div class="card">
       <h3>赛后:记账与清偿</h3>
-      <p>败方损失质押的 <strong>30%</strong>,全额记为对胜方的债务——<strong>平台不抽赌注,只负责记账</strong>(收入来自服务费,与输赢无关)。清偿方式:胜方之后的 AI 调用优先由败方托管的 Key 承担,直到债务冲销——字面意义上的<strong>「下一批 token 免费了」</strong>。</p>
+      <p>败方损失质押的 <strong>20%</strong>,全额记为对胜方的债务——<strong>平台不抽赌注,只负责记账</strong>(收入来自服务费,与输赢无关)。清偿方式:胜方之后的 AI 调用优先由败方托管的 Key 承担,直到债务冲销——字面意义上的<strong>「下一批 token 免费了」</strong>。</p>
       <p style="margin-top:10px">匹配基于 Glicko-2 评分 + 综合战力(等级/EV/技能),同质押档撮合;90 秒匹配不到真人时可打「幽灵队伍」练习赛(真实玩家快照代打,明确标注,无经济转移)。</p>
     </div>
   </section>
@@ -388,7 +388,7 @@
   </section>
 
   <footer>
-    DigMon Product Doc v0.2(核心玩法版)· 2026-07<br>
+    Mogwai Product Doc v0.3(核心玩法版)· 2026-07<br>
     商业化 / 反作弊 / 合规 / 排期等实现层内容 → tech-design.md · architecture.md · REVIEW.md
   </footer>
 </div>

@@ -76,3 +76,14 @@
 **改动**:
 - 重写 `README.md`:开头改为系统的客观描述;文档索引补全 REVIEW/journal;"关键技术决策"改为五条架构决策陈述(含计费权威、合约化执行);删除读者定位列与口号式表述
 **引用**: README.md
+
+## 2026-07-25 · REVIEW 全部 Block 逐条裁定并落文档
+
+**目的**: 与用户逐条过 TODO/REVIEW,拿到全部 12 个未决 Block 的裁定并回写正式文档
+**改动**:
+- **产品改名 DigMon → Mogwai**,全仓改名(README / 三份 docs / architecture 插件与目录名),"数码兽"改"魔怪"
+- 裁定落 tech-design(v0.2 → v0.3):新增 §1.4 #5「采集钉网关、客户端外壳可替换(未来可能纯 CLI addon)」;EV 取消周衰减改赛季重置(M5);IV 改窄幅随机(总和恒定 126、单项 13~29);等级曲线改中速偏慢组(前期加速);技能属性首发用宝可梦 18;loss_rate 30% → 20%;provider 加火山方舟(共 5 家)
+- 裁定落 REVIEW.md:Block 1–12 结论全部回填,汇总表完成,13/13 有结论;明确原则「模块内数值设计不前置拍板」(Block 7/8/9 数值推到 M3/M4 模块设计时)
+- 其他确认:1000 CP/USD + 服务费 5%;明文默认开(数据全量回流为核心诉求);技能池 40;TS 全栈(单人团队,按「只选对的」标准);不做 Demo 直接 M1;里程碑按范围验收不设周期
+- product.html 同步(v0.2 → v0.3);journal/TODO.md 按模块重组,新增长线区(双人审批、数据回流专项、CLI addon、Bifrost 预案)
+**引用**: docs/REVIEW.md 汇总表 · docs/tech-design.md §1.4/§5/§6/§7/§10 · docs/product.html · journal/TODO.md
