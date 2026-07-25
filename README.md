@@ -11,6 +11,8 @@
 | [docs/product.html](docs/product.html) | 产品文档(H5,浏览器直接打开,移动端适配) | 产品 / 运营 / 投资人 |
 | [docs/tech-design.md](docs/tech-design.md) | 技术设计:CP 折算公式引擎、Langfuse 数据采集、EV 映射、EXP/抽卡、匹配/战斗/结算的完整方案与公式 | 研发 |
 | [docs/architecture.md](docs/architecture.md) | 代码架构:服务拓扑、Monorepo 目录结构、数据模型、事件契约、实施路线 | 研发 |
+| [journal/WORKLOG.md](journal/WORKLOG.md) | 工作日志:每次会话的目的与对工程的改动(append-only) | 研发 |
+| [journal/TODO.md](journal/TODO.md) | 集中待办:待拍板项与各里程碑开发事项 | 研发 |
 
 ## 核心循环
 

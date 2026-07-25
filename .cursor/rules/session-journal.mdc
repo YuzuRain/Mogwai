@@ -1,0 +1,28 @@
+---
+description: Every working session must be recorded in journal/ (worklog + central todo list)
+alwaysApply: true
+---
+
+# Session Journal
+
+Every session that affects the project must leave a trace in `journal/` before it ends:
+
+- **`journal/WORKLOG.md`** — append one entry per session: purpose, what was done, refs.
+- **`journal/TODO.md`** — the single central list of open work items. In the same session: add newly discovered items, check off what you completed. Future development starts by reading this file.
+
+Working rules:
+
+- **Append-only.** Never rewrite or delete past WORKLOG entries; corrections get a new entry.
+- **Log impact, not narration.** Record only project-affecting facts: files/docs changed, decisions made, commits pushed, contracts defined. Skip exploration steps and dead ends unless the dead end itself is a finding.
+- **Pure Q&A sessions** (nothing in the project changed) need no entry.
+- **TODO items must be self-contained**: enough context (doc section, REVIEW block, milestone) that someone with no chat history can pick them up.
+
+Entry template:
+
+```markdown
+## 2026-07-25 · <short title>
+**目的**: 一句话说明这次调用要解决什么
+**改动**:
+- <对工程有影响的事实,一条一个>
+**引用**: commit <hash> · <涉及的文档/模块>
+```
