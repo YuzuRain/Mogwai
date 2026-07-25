@@ -1,0 +1,48 @@
+services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  fake-provider:
+    build: ./fake_provider
+    environment:
+      REDIS_HOST: redis
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  seed:
+    build: ./seed
+    environment:
+      REDIS_HOST: redis
+      SPIKE_KEK: "5ff2e64ecb2eb27f0f28f3c31fcd7b3ea0f54b6c78dd85df42d0367bf35430c7"
+    depends_on:
+      redis:
+        condition: service_healthy
+    restart: "no"
+
+  litellm:
+    image: ghcr.io/berriai/litellm:main-stable
+    command: ["--config", "/app/spike-config.yaml", "--port", "4000"]
+    ports:
+      - "4000:4000"
+    volumes:
+      - ./litellm-config.yaml:/app/spike-config.yaml:ro
+      - ./plugins:/app/plugins:ro
+    environment:
+      PYTHONPATH: /app/plugins
+      REDIS_HOST: redis
+      SPIKE_KEK: "5ff2e64ecb2eb27f0f28f3c31fcd7b3ea0f54b6c78dd85df42d0367bf35430c7"
+      LITELLM_MASTER_KEY: "sk-spike-master-not-used"
+      LITELLM_TELEMETRY: "False"
+    depends_on:
+      redis:
+        condition: service_healthy
+      fake-provider:
+        condition: service_started
+      seed:
+        condition: service_completed_successfully
