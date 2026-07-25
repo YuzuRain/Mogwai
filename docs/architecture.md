@@ -34,9 +34,10 @@ flowchart TB
       ACC[account 模块<br/>用户/认证/Key托管]
       BILL[billing 模块<br/>折算引擎/账本]
       TELE[telemetry 模块<br/>事件入库/Langfuse]
-      GAME[game 模块<br/>EV/EXP/技能/抽卡]
+      GAME[game 模块<br/>EV/EXP/技能/抽卡/日报]
       MATCH[match 模块<br/>匹配队列]
-      BATTLE[battle 模块<br/>战斗模拟/结算]
+      BATTLE[battle 模块<br/>战斗模拟/复盘/结算]
+      RT[realtime 模块<br/>WebSocket 推送]
       ADMIN[admin 模块<br/>配置中心/运营后台]
     end
 
@@ -86,18 +87,22 @@ digmon/
 │   │       │   ├── game/           #   ├─ ev/        特征→EV 引擎(权重矩阵可配)
 │   │       │   │                   #   ├─ exp/       EXP 结算、等级曲线
 │   │       │   │                   #   ├─ skill/     技能仓库、装备
-│   │       │   │                   #   └─ gacha/     抽卡、保底、审计随机数
+│   │       │   │                   #   ├─ gacha/     抽卡、保底、审计随机数
+│   │       │   │                   #   └─ report/    EV 日报(归因分解 → 结构化数据)
 │   │       │   ├── match/          #   匹配队列、Glicko-2、战力评估、反喂分
 │   │       │   ├── battle/         #   ├─ engine/    确定性战斗模拟(纯函数)
-│   │       │   │                   #   ├─ room/      WebSocket 房间、回放推送
+│   │       │   │                   #   ├─ analysis/  复盘归因(turn_log → 败因/建议)
+│   │       │   │                   #   ├─ room/      对战房间、演出推送
 │   │       │   │                   #   └─ settle/    结算编排(调 billing)
+│   │       │   ├── realtime/       #   统一 WebSocket:EXP 飘字、EV 预估、战斗演出、日报通知
 │   │       │   └── admin/          #   配置中心 CRUD、灰度、审计日志
-│   │       └── workers/            #   定时任务:EV 日结、Key 巡检、结算补偿
+│   │       └── workers/            #   定时任务:EV 日结+日报生成、Key 巡检、结算补偿
 │   │
 │   └── web/                        # Next.js:控制台 + 对战 H5(App Router 分区)
-│       └── src/app/
-│           ├── (console)/          #   Key 管理、账单、用量报表
-│           └── (game)/             #   训练师主页、抽卡、匹配、战斗播放器
+│       └── src/app/                #   页面结构对齐产品文档「功能地图」五页面
+│           ├── (console)/          #   控制台:Key 管理、账单(逐笔折算追溯)、用量报表
+│           └── (game)/             #   训练师主页 / 抽卡&技能仓库 /
+│                                   #   对战大厅(演出播放器+回放+复盘页)/ EV 日报
 │
 ├── packages/
 │   ├── shared/                     # 跨端共享类型:事件 schema、DTO、错误码
@@ -128,12 +133,13 @@ digmon/
 
 | Topic | 生产者 | 消费者 |
 |---|---|---|
-| `usage.completed` | gateway | billing / game.exp / telemetry |
+| `usage.completed` | gateway | billing / game.exp / telemetry / realtime(EXP 飘字) |
 | `behavior.tracked` | tracking-sdk → telemetry | game.ev |
-| `ev.settled`(日结) | game.ev worker | game(面板重算) |
-| `trainer.levelup` | game.exp | game.gacha(发券)/ 通知 |
-| `battle.finished` | battle.engine | battle.settle / match(rating 更新) |
-| `settlement.done` | billing.ledger | 通知 / 排行榜 |
+| `ev.settled`(日结) | game.ev worker | game(面板重算)/ game.report(生成日报) |
+| `ev.report.generated` | game.report | realtime(日报通知) |
+| `trainer.levelup` | game.exp | game.gacha(发券)/ realtime |
+| `battle.finished` | battle.engine | battle.settle / battle.analysis / match(rating 更新) |
+| `settlement.done` | billing.ledger | realtime / 排行榜 |
 
 所有消费者以 `event_id` 幂等,消费位点独立,单个下游故障不影响其他下游。
 
@@ -201,6 +207,7 @@ sequenceDiagram
     participant R as Redis Streams
     participant B as billing
     participant GM as game
+    participant RT as realtime
 
     C->>G: POST /v1/chat/completions (平台 token)
     G->>G: 鉴权→选 Key(BYOK 优先)→KMS 解密
@@ -209,6 +216,7 @@ sequenceDiagram
     G->>R: usage.completed(含 token 数)
     R->>B: 消费→公式求值→写账本(幂等)
     R->>GM: 消费→EXP 累加→(可能)levelup→发抽卡券
+    R->>RT: 消费→WS 推送 EXP 飘字 / EV 预估(仅在线,best-effort)
     Note over G: 同时异步写 Langfuse trace
 ```
 
@@ -249,10 +257,14 @@ sequenceDiagram
 
 ## 7. 实施路线(供排期参考)
 
-| 阶段 | 范围 | 里程碑 |
+阶段划分对齐产品的三个子循环:M1 打底,M2 交付「使用循环 + 成长循环」,M3/M4 交付「对战循环」。
+
+| 阶段 | 范围 | 里程碑(以循环闭合为验收) |
 |---|---|---|
 | M1(4 周) | gateway + account(Key 托管)+ billing(公式引擎 + 账本)+ 控制台 | 能托管 Key、代理调用、按可配置公式扣 CP |
-| M2(3 周) | telemetry + Langfuse + game(EV/EXP/等级) | 用量转化为 EV/EXP,训练师主页可见 |
-| M3(3 周) | skill/gacha + battle-core 引擎 + PVE 试炼 | 升级抽卡、打 AI 队伍验证数值 |
-| M4(3 周) | match + PVP + 结算 + 反作弊基线 | 完整核心循环上线内测 |
+| M2(3 周) | telemetry + Langfuse + game(EV/EXP/等级)+ realtime(EXP 飘字)+ EV 日报 | **使用循环、成长循环闭合**:调用有即时反馈,每日有日报与归因 |
+| M3(3 周) | skill/gacha + battle-core 引擎 + 复盘归因 + PVE 试炼 | 升级抽卡、打 AI 队伍验证数值与复盘体验 |
+| M4(3 周) | match + PVP + 质押结算 + 反作弊基线 | **对战循环闭合**:完整主循环上线内测 |
 | M5(持续) | 赛季、排行榜、道具、运营后台深化 | 公测 |
+
+产品明确的「刻意不做」清单(公会/社交、体力值、签到、Chat UI、装备强化)不进任何阶段排期,也不在代码中预留抽象。
