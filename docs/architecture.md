@@ -1,6 +1,6 @@
 # DigMon 技术架构设计
 
-> Architecture Design v0.3 · 配套文档:[技术设计](./tech-design.md) · [产品文档(H5)](./product.html)
+> Architecture Design v0.4 · 配套文档:[技术设计](./tech-design.md) · [产品文档(H5)](./product.html)
 >
 > 本文分两部分:**Part A 顶层技术架构**(组件选型与边界契约)、**Part B 代码概要设计**(模块、数据模型、时序)。
 
@@ -88,7 +88,7 @@ flowchart TB
 | 5 | 应用框架 | **NestJS 模块化单体** | 全部业务域,API 与 Worker 同镜像双入口 | 单模块负载/团队规模触发时按模块拆微服务(边界已按此设计) |
 | 6 | 认证/身份 | **better-auth**(TS 嵌入式,drizzle 适配) | 注册登录、OAuth 社交登录、会话、2FA | Logto:需要独立 IdP / 多应用 SSO 时;Keycloak:企业 SAML/LDAP 需求时 |
 | 7 | 平台 API token | **better-auth api-key 插件**(`sk_` 前缀、哈希存储、限流、元数据) | 签发用户调网关用的平台 token;**token 哈希投影到 Redis 供网关插件验证**(网关不触 PG) | — |
-| 8 | 任务队列/定时 | **BullMQ**(Redis 之上) | Key 巡检、结算补偿、EV 日结调度、重试语义 | Temporal:出现跨天长事务/复杂工作流时 |
+| 8 | 任务队列/定时 | **BullMQ**(Redis 之上) | Key 巡检、结算补偿、冻结兜底扫描、每日 usage 对账、EV 日结调度 | Temporal:出现跨天长事务/复杂工作流时 |
 | 9 | 实时推送 | **Socket.IO**(NestJS 内嵌) | EXP 飘字、战斗演出、日报通知 | Centrifugo:在线长连接 > 5 万时外置 |
 | 10 | 前端 | **Next.js**(App Router) | 控制台 + 对战 H5 双分区 | — |
 
@@ -99,7 +99,7 @@ flowchart TB
 | 11 | 匹配器 | **自研**(Redis ZSET 队列 + 2s 撮合扫描) | rating 渐宽窗口、质押同档、战力阈值、反喂分过滤 | 已评估并否决:Open Match(OM1 已归档,OM2 preview 且为 K8s 重型数据层)、Nakama(完整游戏后端,与自有账户/账本域重叠)、Colyseus(实时房间同步,不适配异步自动战斗) |
 | 12 | 评分算法 | **glicko2**(npm 现成实现) | 对战评分与 RD 更新 | — |
 | 13 | 战斗引擎 | **自研 battle-core**(TS 纯函数) | 确定性回合模拟 + 复盘归因,前后端同构 | 无成熟开源可买;性能瓶颈时同接口下沉 Rust/WASM |
-| 14 | 排行榜 | Redis ZSET(realtime 模块内) | 赛季/段位榜 | — |
+| 14 | 排行榜 | Redis ZSET(**match 模块赛季子域**;realtime 只负责推送通道) | 赛季/段位榜 | — |
 | 15 | 公式 DSL | **expr-eval**(TS,沙箱求值) | CP 折算公式、EV 权重等可配置表达式 | cel-js / QuickJS 沙箱:需要更复杂控制流时 |
 | 16 | 配置中心 | **自建 config_versions 表**(版本化/灰度/审计/沙箱回放) | 公式、EV 权重、概率表、战斗参数 | Unleash:仅适用纯功能开关,不满足版本化 payload 审计,故不采用为主方案 |
 
@@ -131,17 +131,20 @@ gateway/(独立部署单元,非 TS monorepo 的一部分)
 ├── litellm-config.yaml        # 模型清单、平台 Key 池、路由/重试/熔断参数
 └── plugins/                   # digmon 扩展,全部逻辑 < 500 行,无业务规则
     ├── platform_auth.py       # custom_auth hook:平台 API token → user_id/trainer_id
-    ├── key_resolver.py        # pre-call hook:查 Redis 路由缓存 → BYOK 优先 →
-    │                          #   KMS 解密(内存中用完即弃)→ 注入本次请求
+    ├── key_resolver.py        # pre-call hook:查 Redis 投影 → 债务清偿路由 > BYOK > 平台池
+    │                          #   → KMS 解密(内存中用完即弃)→ 注入本次请求
     └── usage_publisher.py     # success/failure callback:组装 usage.completed
                                #   (event_id 幂等键 + token 数 + langfuse_trace_id)
                                #   → XADD 到 Redis Streams
 ```
 
-- **两个 Redis 投影,保证网关不触 PostgreSQL**(account 模块在数据变更时写入,网关只读):
-  1. 平台 token 投影:「token 哈希 → user_id / 限流参数」(token 由 better-auth api-key 插件签发,见 A3 #7);
+- **三个 Redis 投影,保证网关不触 PostgreSQL**(account / billing 在数据变更时写入,网关只读):
+  1. 平台 token 投影:「token 哈希 → user_id / 限流参数 / privacy_mode / 拒绝标记」(token 由 better-auth api-key 插件签发,见 A3 #7);
   2. Key 路由投影:「user → provider keys(密文)+ 模型白名单」;
-- **Langfuse**:用 LiteLLM 内置 callback 直连,trace_id 回填进 usage 事件供下游关联;
+  3. 授权投影:「user → 服务费欠费 / 担保额度 / 未清偿债权债务 / 拒绝标记」——platform_auth 据此做**软授权**,key_resolver 据此做**债务清偿路由**(胜方调用优先走债务人 Key,技术设计 §2.5/§10.3);规则在 billing,网关只做数值比较;
+- **平台自营 Key 池与用户 Key 同等管理**:由 admin 录入、同样信封加密、经 Key 路由投影下发;`litellm-config.yaml` 不落任何 Key 明文;
+- **usage_publisher 可靠性**:XADD 失败写本地 spool 循环重投,配合每日对账任务(见技术设计 §2.3);
+- **Langfuse**:用 LiteLLM 内置 callback 直连,trace_id 回填进 usage 事件;`privacy_mode` 用户只写脱敏摘要,明文不出网关;
 - **不使用** LiteLLM 的:计费(平台 CP 权威计费在 billing)、虚拟 Key 体系(平台 token 由 account 签发)、其 Admin UI(仅运维可见)。
 
 ## A5. 事件契约(跨进程唯一接口)
@@ -154,11 +157,12 @@ gateway/(独立部署单元,非 TS monorepo 的一部分)
 | `ev.report.generated` | game.report | realtime(日报通知) |
 | `trainer.levelup` | game.exp | game.gacha(发券)/ realtime |
 | `battle.finished` | battle.engine | battle.settle / battle.analysis / match |
-| `settlement.done` | billing.ledger | realtime / 排行榜 |
+| `settlement.done` | billing.ledger | realtime / match(排行榜) |
 
-- 所有事件带 `event_id`(UUID)幂等键,消费者各自去重;
+- 所有事件带 `event_id`(UUID)幂等键与 `schema_version`(消费者向后兼容一版),消费者各自去重;
 - schema 以 `packages/shared` 中的 zod 定义为权威(gateway 的 Python 侧按 JSON Schema 导出物校验);
-- 消费组独立位点,单个下游故障不影响其他下游。
+- 消费组独立位点,单个下游故障不影响其他下游;
+- **结算等有经济后果的消费,只依据事件引用的「合约」执行**(技术设计 §1.5),不回读配置中心。
 
 ---
 
@@ -185,11 +189,11 @@ digmon/
 │   │       │   │                   #   ├─ skill/     技能仓库、装备
 │   │       │   │                   #   ├─ gacha/     抽卡、保底、审计随机数
 │   │       │   │                   #   └─ report/    EV 日报(归因分解 → 结构化数据)
-│   │       │   ├── match/          #   匹配队列、Glicko-2、战力评估、反喂分
-│   │       │   ├── battle/         #   ├─ engine/    调 battle-core 执行模拟
+│   │       │   ├── match/          #   匹配队列、Glicko-2、战力评估、反喂分、赛季/排行榜
+│   │       │   ├── battle/         #   ├─ engine/    调 battle-core 执行模拟、写对战合约与战果
 │   │       │   │                   #   ├─ analysis/  复盘归因(turn_log → 败因/建议)
 │   │       │   │                   #   ├─ room/      对战房间、演出推送
-│   │       │   │                   #   └─ settle/    结算编排(调 billing)
+│   │       │   │                   #   └─ settle/    消费 battle.finished,按对战合约幂等结算
 │   │       │   ├── realtime/       #   Socket.IO:EXP 飘字、EV 预估、战斗演出、日报通知
 │   │       │   └── admin/          #   配置中心 CRUD、灰度、审计日志
 │   │       └── workers/            #   Streams 消费者 + BullMQ 任务:EV 日结+日报、Key 巡检、结算补偿
@@ -228,13 +232,16 @@ digmon/
 
 ```sql
 -- 账户与 Key
-users(id, email, tier, privacy_mode, created_at)
+users(id, email, tier, privacy_mode,
+      pledge_limit_cp BIGINT,                                   -- 用户自设的对战担保额度上限
+      created_at)
 provider_keys(id, user_id, provider, encrypted_dek, ciphertext,
               model_whitelist jsonb, status, last_verified_at)
 
--- 账本(只增)
-ledger_entries(id, event_id UNIQUE, user_id, account,          -- available|frozen|revenue
-               delta_cp BIGINT, reason, ref_type, ref_id,       -- battle|usage|gacha|topup
+-- 账本(只增;纯记账制,CP 为记账单位,平台零托管,见技术设计 §3.5)
+ledger_entries(id, event_id UNIQUE, user_id, account,          -- pledge_locked|debt|service_receivable
+               counterparty_id,                                 -- debt 科目的对手方(债权人/债务人)
+               delta_cp BIGINT, reason, ref_type, ref_id,       -- battle|usage|gacha|settlement
                formula_version, snapshot jsonb, created_at)
 
 -- 配置中心(公式/权重/概率共用)
@@ -245,14 +252,19 @@ config_versions(id, namespace,                                  -- credit_formul
 -- 游戏
 trainers(id, user_id, species_id, level, exp BIGINT,
          ivs jsonb, evs jsonb,                                  -- {hp,atk,def,spa,spd,spe}
+         strategy TEXT,                                          -- aggressive|balanced|conservative(赛前策略倾向)
          rating REAL, rating_rd REAL, equipped_skills jsonb)
 skills(id, name, type, category, power, accuracy, pp, rarity, effect jsonb)
 trainer_skills(trainer_id, skill_id, obtained_at, source)
-gacha_logs(id, user_id, draw_counter, seed_hmac, result_skill_id, rarity, created_at)
+gacha_logs(id, user_id, draw_counter, seed_hmac,
+           rates_version,                                        -- 概率表版本(合约化,可精确重放)
+           result_skill_id, rarity, created_at)
 
 -- 对战
-battles(id, trainer_a, trainer_b, stake_cp, seed BIGINT,
-        snapshot_a jsonb, snapshot_b jsonb,                     -- 开战时属性/技能快照
+battles(id, trainer_a, trainer_b, seed BIGINT,
+        contract jsonb,                                          -- 对战合约(技术设计 §1.5):stake_cp、
+                                                                 --   loss_rate、battle_config 版本、新手保护标记
+        snapshot_a jsonb, snapshot_b jsonb,                      -- 开战时属性/技能快照
         turn_log jsonb, winner, reason, settled_at)
 ```
 
@@ -311,16 +323,21 @@ sequenceDiagram
     participant H as H5 客户端
     participant M as match
     participant BT as battle
+    participant R as Redis Streams
+    participant S as battle.settle
     participant L as billing.ledger
 
     H->>M: 进入队列(档位 500 CP)
-    M->>L: 冻结 500 CP
+    M->>L: 锁定担保额度 pledge_locked(取消/断线/超时路径见技术设计 §8.2)
     M->>M: 撮合(rating 窗口逐步放宽)
-    M->>BT: 创建对局(双方快照 + seed)
+    M->>BT: 创建对局(写入对战合约:质押/loss_rate/参数版本 + 双方快照 + seed)
     BT->>BT: simulateBattle() + analyzeBattle()
     BT-->>H: WebSocket 推送 turn_log + 复盘数据(客户端播动画)
-    BT->>L: 结算事务(败方→胜方/平台/解冻)
-    BT->>M: battle.finished → Glicko-2 更新
+    BT->>R: battle.finished(战果落库即完成使命,不同步调账本)
+    R->>S: 消费(battle_id 幂等,失败自动重试,10min 补偿兜底)
+    S->>L: 按合约记账:败方→胜方 debt(平台不抽成)+ 解锁担保
+    R->>M: 消费 battle.finished → Glicko-2 更新
+    Note over L: 债务此后由胜方调用路由到败方 Key 实物冲销(技术设计 §10.3)
 ```
 
 ## B6. 部署与环境

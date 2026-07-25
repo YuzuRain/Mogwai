@@ -1,0 +1,11 @@
+---
+description: Core engineering principles - simplicity, focus on the core loop, no filler
+alwaysApply: true
+---
+
+# Core Principles
+
+- **Simple is best.** Choose the most direct implementation that satisfies the current requirement. No speculative abstraction: a helper, base class, or "manager" layer needs at least two real call sites to justify its existence.
+- **Focus on the core loop.** This product lives or dies by one loop: AI usage → EV/EXP growth → level-up gacha → battle → CP settlement → back to usage. Prioritize work that closes or strengthens this loop. Features outside it are deferred by default (see the "deliberately not building" list in docs/product.html).
+- **Don't look too far ahead.** Build for the current milestone only. Future-proofing is achieved through clean boundaries (see architecture-discipline rule), never through speculative features, unused config options, or "TODO: support X later" scaffolding.
+- **No filler.** In code review, plans, and summaries: state decisions and their reasons, skip generic advice, restated requirements, and hedge words. If a section says nothing actionable, delete it.

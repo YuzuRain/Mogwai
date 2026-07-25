@@ -1,0 +1,25 @@
+---
+description: Never fake behavior - no mock data, stub implementations, or silent fallbacks
+alwaysApply: true
+---
+
+# No Mocks, No Fakes
+
+Faked behavior poisons debugging later: a path that "works" with canned data hides real integration failures and misleads whoever investigates next.
+
+- **Never hardcode fake data** or return canned results to make something "work for now".
+- **Never stub an unimplemented path with silent success.** If a dependency isn't ready, throw an explicit error:
+
+```ts
+// ❌ BAD - looks like it works, lies to everyone downstream
+async function settleBattle(id: string) { return { ok: true }; }
+
+// ✅ GOOD - fails loudly, impossible to mistake for done
+async function settleBattle(id: string): Promise<SettlementResult> {
+  throw new NotImplementedError('battle.settle: pending ledger integration (M4)');
+}
+```
+
+- **No silent fallbacks** that swallow failure (`catch → return default`). Fail loudly and log the cause; degraded behavior must be an explicit, logged decision.
+- **Tests run against real dependencies** (Postgres/Redis/ClickHouse via `infra/docker-compose.yml`). Mocking is acceptable only for paid external APIs (LLM providers), behind a clearly named test double.
+- Demo/seed data lives only in dedicated seed scripts, never inline in application code.

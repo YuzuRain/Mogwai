@@ -188,7 +188,7 @@
     <h2>核心幻想:用法即天赋</h2>
     <p>每个重度 AI 用户都有自己的「手感」:有人一句短指令直出代码,有人一段长 prompt 反复打磨文案,有人对 AI 的输出逐字审查。这些差异日常是不可见的。</p>
     <p style="margin-top:12px"><strong>DigMon 把它可视化成一只兽。</strong>你不需要为游戏做任何额外的事——继续像平常一样通过平台调模型干活,你的使用风格会自动塑造它的六维属性,烧掉的 token 自动变成它的经验值。<strong>游戏是工作的副产品,而不是另一份工作。</strong></p>
-    <p style="margin-top:12px">然后你带着这只「你自己的镜像」去和别的训练师对战——赌注是真金白银的 Credit Point(CP,平台统一货币,由你托管的模型 Key 折算而来)。</p>
+    <p style="margin-top:12px">然后你带着这只「你自己的镜像」去和别的训练师对战——赌注是 Credit Point(CP,统一记账单位,由模型 token 成本折算而来):输了,你要用自己托管的 Key 替赢家扛一段 token 消耗。<strong>平台不碰赌注,只负责记账。</strong></p>
     <div class="callout">设计原则:<strong>零额外操作产生养成,养成产生对战欲望,对战胜负回流到 AI 使用本身(CP)。</strong>任何破坏「副产品感」的设计(强制签到、体力值、必须手动喂养)都不做。</div>
   </section>
 
@@ -203,8 +203,8 @@
       <div class="loop-arrow">↓ 自动发生,无需操作</div>
       <div class="loop-item"><div class="num"></div><div><b>兽在变强</b><span>使用风格 → 努力值六维;token 消耗 → EXP → 升级 → 抽技能</span></div></div>
       <div class="loop-arrow">↓ 变强产生「想验证」的冲动</div>
-      <div class="loop-item"><div class="num"></div><div><b>对战验证</b><span>质押 CP 匹配对战,赢家拿走输家质押的一部分</span></div></div>
-      <div class="loop-arrow">↺ 赢来的 CP 用于继续调模型,回到 1</div>
+      <div class="loop-item"><div class="num"></div><div><b>对战验证</b><span>质押 CP 匹配对战,败方以托管 Key 为胜方承担等值 token 消耗</span></div></div>
+      <div class="loop-arrow">↺ 赢来的债权抵扣后续调用,回到 1</div>
     </div>
     <p style="margin-top:12px">关键在闭环的最后一步:<strong>对战的战利品(CP)恰好是干活的燃料</strong>。赢了想多用 AI(反正 token 免费了),多用 AI 兽更强,更强更想打——三个环节互为因果。</p>
 
@@ -354,9 +354,9 @@
     </div>
 
     <div class="card">
-      <h3>赛后:CP 结算</h3>
-      <p>败方损失质押的 <strong>30%</strong>,其中一成为平台抽成、九成归胜方;平局各扣 2%。赢来的 CP 直接回到主循环——<strong>下一批 token 免费了</strong>。</p>
-      <p style="margin-top:10px">匹配基于 Glicko-2 评分 + 综合战力(等级/EV/技能),同质押档撮合;90 秒匹配不到真人时可选打「幽灵队伍」(真实玩家快照代打,明确标注,质押减半)。</p>
+      <h3>赛后:记账与清偿</h3>
+      <p>败方损失质押的 <strong>30%</strong>,全额记为对胜方的债务——<strong>平台不抽赌注,只负责记账</strong>(收入来自服务费,与输赢无关)。清偿方式:胜方之后的 AI 调用优先由败方托管的 Key 承担,直到债务冲销——字面意义上的<strong>「下一批 token 免费了」</strong>。</p>
+      <p style="margin-top:10px">匹配基于 Glicko-2 评分 + 综合战力(等级/EV/技能),同质押档撮合;90 秒匹配不到真人时可打「幽灵队伍」练习赛(真实玩家快照代打,明确标注,无经济转移)。</p>
     </div>
   </section>
 
@@ -381,7 +381,7 @@
       <div class="map-card"><b>训练师主页</b><span>兽的形象与面板、六维雷达、今日 EXP/EV 变动、等级进度。成长循环的主入口。</span></div>
       <div class="map-card"><b>抽卡 &amp; 技能仓库</b><span>抽卡演出、保底进度、技能列表、4 槽装配、碎片合成。</span></div>
       <div class="map-card"><b>对战大厅</b><span>质押选档、匹配、战斗演出播放器、战绩与回放列表、复盘页。</span></div>
-      <div class="map-card"><b>控制台</b><span>Key 托管、模型列表、CP 余额与账单(逐笔可追溯折算公式)、用量报表。工具属性的根基。</span></div>
+      <div class="map-card"><b>控制台</b><span>Key 托管、模型列表、CP 账本(债权债务、逐笔可追溯折算公式)、用量报表。工具属性的根基。</span></div>
       <div class="map-card"><b>EV 日报</b><span>每日推送:六维变动 + 归因(「因为你今天重试后修复了 12 次错误,防御 +4」)。让数据采集变成玩家福利而非隐私焦虑。</span></div>
     </div>
     <div class="callout">刻意不做的:公会/社交系统、体力值、每日签到、Chat UI、装备强化。任何不直接服务于「用 AI → 变强 → 对战」三环的功能,首版一律砍掉。</div>

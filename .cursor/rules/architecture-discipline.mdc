@@ -1,0 +1,14 @@
+---
+description: Module boundaries, data structures, protocols and sequencing are first-class citizens
+alwaysApply: true
+---
+
+# Architecture Discipline
+
+This is a long-lived codebase, not throwaway code. Decoupling, data structures, inter-module protocols, and sequencing deserve real design attention.
+
+- **Module boundaries are hard walls.** Modules talk only through their public APIs. Never import another module's internals or query another module's tables. Cross-process communication goes through the event bus only — no ad-hoc RPC (contracts listed in docs/architecture.md §A5).
+- **Contracts before code.** Any new or changed data structure, event, or API is defined first as a schema in `packages/shared` (zod, single source of truth) and reflected in the design docs. Types derive from schemas, not the other way around.
+- **Sequencing is design, not detail.** For any flow crossing more than two modules, confirm — or update — the sequence diagram in docs/architecture.md before implementing. Ordering, idempotency keys, and failure/compensation paths must be explicit.
+- **Small loop first, extensible by boundary.** Ship the smallest working loop, but keep designated replacement points behind interfaces (`EventBus`, `TelemetrySink`, KMS client, gateway runtime). Extensibility means "cheap to replace", not "built in advance".
+- **Respect the file hierarchy.** Follow the monorepo layout in docs/architecture.md §B1. New code goes into the module that owns the data. If ownership is unclear, decide ownership first — never create `utils/` or `misc/` dumping grounds.

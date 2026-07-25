@@ -1,0 +1,24 @@
+---
+description: Persist cross-session knowledge (schemas, protocols, decisions) into layered design docs
+alwaysApply: true
+---
+
+# Design Docs Are the Source of Truth
+
+Anything that must survive across chat sessions — data structures, protocols, formulas, decisions — lives in the design docs, not in chat history.
+
+The layered docs and what belongs where:
+
+| Doc | Owns |
+|---|---|
+| `docs/product.html` | Gameplay, core loops, what we deliberately don't build |
+| `docs/tech-design.md` | Domain rules: credit formula, EV mapping, battle math, settlement |
+| `docs/architecture.md` | Component selection, module boundaries, event contracts, sequences, repo layout |
+| `docs/REVIEW.md` | Open decisions awaiting the user's ruling |
+
+Working rules:
+
+- **Read before you build.** Check the relevant doc section before implementing. If the implementation must deviate, update the doc in the same change — docs and code are never allowed to disagree.
+- **Record on change.** Introducing or changing a data structure, event topic/schema, API, config namespace, or numeric formula → update the owning doc immediately, not "later".
+- **Undecided goes to REVIEW.md.** A choice with real trade-offs becomes a review block (options + recommendation) instead of a silent decision buried in code.
+- **Update over proliferate.** Extend the four docs above; don't scatter design notes across new README/notes files.
