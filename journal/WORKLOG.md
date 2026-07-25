@@ -96,3 +96,15 @@
 - README 新增「架构总览」章节,嵌入与 A1 同源的 mermaid 图,两处互相标注「改动时一起更新」
 - 修正过期命名:README 关键架构决策与 journal/TODO.md M1 gateway 项中的网关插件名统一为 platform_auth / key_resolver / usage_publisher(与 architecture A4 / tech-design §2.5 对齐;旧文本残留 auth_projection / 隐私回调)
 **引用**: docs/architecture.md A1 · README.md · journal/TODO.md
+
+## 2026-07-25 · Coding agent 用户可达性讨论,结论落文档
+
+**目的**: 回答「用户都在 Claude Code/Cursor/Trae 里,网关路线还成立吗」,把结论固化
+**改动**:
+- **核心结论:路线成立,不推翻任何架构决策**。coding agent 均支持 base URL 覆盖,一行配置接入网关(OpenRouter 已验证);「采集钉网关」决策被验证而非动摇。市场边界明确为「按 token 付费的 coding agent 用户」,订阅制流量结构性不可达、定位为漏斗上游——结论落 tech-design §1.4 #5
+- **数据面分级原则**(新增,tech-design §1.4 #5):网关 = 权威数据面(计费/正式 EV/结算只认它);客户端 addon 采集 = 低信任辅助面(自述可伪造,只进练习赛/展示)。依据:遥测喂的是有经济利益的竞技游戏,上报者是数据膨胀受益人,Langfuse 式自采上报的信任前提在本产品不成立
+- tech-design §2.2:网关双协议为 M1 验收项——OpenAI 兼容 + Anthropic `/v1/messages`(Claude Code 接入硬需求);每工具接入指南定为控制台一等公民。architecture A1 铁律 #1 / A3 #1 同步
+- tech-design §4.2:EV 特征以网关流量为主数据源(相邻高相似请求/会话节奏/工具调用模式/上下文长度),tracking-sdk 降级为控制台补充;architecture A3 #21 同步
+- tech-design §10.3 新增 M4 两个已知设计输入:清偿路由的 provider 匹配缺口(债务滞留策略);清偿调用丢 prompt cache、受债务人 rate limit 的范围限定
+- journal/TODO.md:M1 加 LiteLLM spike(验证三扩展点,最大风险前置)、双协议验收、接入指南页;M4 加清偿两输入;长线 CLI addon 项扩写为获客层框架(mogwai init / 练习赛数据面:Claude Code 本地 transcript、Cursor CSV 手动上传、Trae 待调研 / source=addon 信任权重 / 不早于 M5)
+**引用**: docs/tech-design.md §1.4/§2.2/§4.2/§10.3 · docs/architecture.md A1/A3 · journal/TODO.md

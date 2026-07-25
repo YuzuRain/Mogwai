@@ -59,7 +59,7 @@ flowchart TB
 
 三条铁律:
 
-1. **网关是可替换运行时**:对上只承诺 OpenAI 兼容 API,对下只承诺 `usage.completed` 事件 schema,自定义逻辑全部收敛在 3 个薄插件里 → 换掉 LiteLLM(Bifrost / 自研)时两侧无感;
+1. **网关是可替换运行时**:对上只承诺两种 wire format(OpenAI 兼容 API + Anthropic `/v1/messages`,后者是 Claude Code 接入的硬需求,见技术设计 §2.2),对下只承诺 `usage.completed` 事件 schema,自定义逻辑全部收敛在 3 个薄插件里 → 换掉 LiteLLM(Bifrost / 自研)时两侧无感;
 2. **网关不碰业务**:只依赖 Redis + KMS,core-app 全挂不影响 AI 代理主链路;**权威计费在 billing 公式引擎,LiteLLM 自带的 spend tracking 仅作对账参考**;
 3. **跨进程只走事件**:gateway 与 core-app 之间无 RPC,全部经 Redis Streams,消费组互相独立。
 
@@ -79,7 +79,7 @@ flowchart TB
 
 | # | 组件 | 选型 | 承担职责 | 备选 / 替换触发条件 |
 |---|---|---|---|---|
-| 1 | LLM 网关运行时 | **LiteLLM Proxy**(自托管,MIT) | OpenAI 兼容代理、100+ provider 适配、流式、重试/fallback/熔断、负载均衡 | **Bifrost**(Go)或自研:单实例 > 300 RPS、或网关自身 P99 开销 > 100ms 时替换 |
+| 1 | LLM 网关运行时 | **LiteLLM Proxy**(自托管,MIT) | 双协议代理(OpenAI 兼容 + Anthropic `/v1/messages`)、100+ provider 适配、流式、重试/fallback/熔断、负载均衡 | **Bifrost**(Go)或自研:单实例 > 300 RPS、或网关自身 P99 开销 > 100ms 时替换(agent 流量大上下文高频,触发概率偏高,预案保持热备) |
 | 2 | 网关自定义逻辑 | **自研 LiteLLM 插件(Python ×3)** | platform_auth / key_resolver / usage_publisher(见 A4) | 插件保持"薄、无业务规则",否则替换运行时成本失控 |
 | 3 | 网关限流 | LiteLLM 内置 rpm/tpm(按平台 token) | 防单用户打爆 Key 池 | — |
 | 4 | token 估算 | LiteLLM 内置计数;缺 usage 时 **tiktoken** 估算 | usage 兜底,打 `estimated` 标 | — |
@@ -114,7 +114,7 @@ flowchart TB
 | 18 | 事件总线 | **Redis Streams**(消费组) | 全部领域事件 | Kafka:> 5k msg/s、需长回溯时迁移;代码依赖自建 `EventBus` 抽象 |
 | 19 | OLAP | **ClickHouse**(与 Langfuse v3 共用实例) | 行为事件原始表、EV 特征物化视图 | 资源冲突时拆独立实例 |
 | 20 | LLM 观测 | **Langfuse v3**(自托管) | prompt/completion/trace 存储、会话关联 | Helicone / Phoenix;接口层抽象为 TelemetrySink |
-| 21 | 行为采集 | **自研 tracking-sdk**(浏览器,< 3KB) | prompt.edited / regenerated 等事件 → 事件 API | PostHog:事件 schema 是 EV 体系核心资产,不外包 |
+| 21 | 行为采集 | **自研 tracking-sdk**(浏览器,< 3KB) | prompt.edited / regenerated 等事件 → 事件 API;**仅覆盖 Web 控制台,系补充数据源**(EV 主数据源是网关流量,技术设计 §4.2) | PostHog:事件 schema 是 EV 体系核心资产,不外包 |
 
 **安全与运营**
 
