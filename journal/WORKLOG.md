@@ -69,3 +69,10 @@
 - 新建 `.cursor/rules/session-journal.mdc`(alwaysApply)
 - 新建 `journal/WORKLOG.md`(回填今日全部工作)、`journal/TODO.md`(归拢当前全部挂起事项)
 **引用**: journal/ · .cursor/rules/session-journal.mdc
+
+## 2026-07-25 · README 改写为专业冷静风格
+
+**目的**: 去掉 README 的宣传腔,改为客观的工程仓库首页
+**改动**:
+- 重写 `README.md`:开头改为系统的客观描述;文档索引补全 REVIEW/journal;"关键技术决策"改为五条架构决策陈述(含计费权威、合约化执行);删除读者定位列与口号式表述
+**引用**: README.md
