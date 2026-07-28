@@ -6,6 +6,9 @@ import { z } from "zod";
  * Redis string(JSON),键:`proj:authz:<user_id>`。
  * 投影是近似值,允许并发窗口内小幅越限,权威在账本;
  * 网关只做数值比较,业务规则全部留在 billing。
+ *
+ * 缺失语义:投影不存在 = 放行(fail-open)——新用户没有账本活动就没有投影,
+ * 属正常态;billing 必须保证「有账本活动就有投影」,该保证是 402 软预检生效的前提。
  */
 export const debtEntrySchema = z.object({
   /** 债权人(清偿路由的受益方)。 */

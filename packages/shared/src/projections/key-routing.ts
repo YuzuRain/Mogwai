@@ -13,7 +13,11 @@ export const keyRoutingEntrySchema = z.object({
   nonce: z.base64(),
   /** base64(AES-256-GCM ciphertext) */
   ciphertext: z.base64(),
-  /** base64(KMS 加密后的 DEK);信封加密的外层。 */
+  /**
+   * base64(KMS 加密后的 DEK);信封加密的外层。线格式随 KMS 后端而定
+   * (gateway/plugins/kms.py):env_kek = base64(12B nonce ‖ GCM 密文),
+   * openbao_transit = base64("vault:v1:..."),account 写入与 gateway 解包必须一致。
+   */
   encrypted_dek: z.base64(),
   model_whitelist: z.array(z.string().min(1)),
 });

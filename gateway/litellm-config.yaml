@@ -1,0 +1,49 @@
+# mogwai gateway — LiteLLM Proxy 生产配置(architecture A4)
+#
+# 原则:
+# - 对外模型名一律 provider/model(tech-design §2.2;key_resolver 依赖此约定取 provider);
+# - 所有 api_key 均为占位值:真实 Key 由 key_resolver 每请求从 Redis 投影解密注入,
+#   本文件永不落任何 Key 明文(A4);
+# - 不使用 LiteLLM 的计费/虚拟 Key/Admin UI(权威计费在 billing,token 由 account 签发)。
+#
+# 首发 5 家 provider(tech-design §1.1,REVIEW Block 2 裁定)。
+# 注意:qwen 走 LiteLLM 的 dashscope 适配、火山方舟走 volcengine 适配——
+# 对外前缀与适配层的映射关系见 gateway/README.md,真实 Key 冒烟验证前视为未确认。
+
+model_list:
+  - model_name: openai/*
+    litellm_params:
+      model: openai/*
+      api_key: "placeholder-injected-per-request-by-key-resolver"
+  - model_name: anthropic/*
+    litellm_params:
+      model: anthropic/*
+      api_key: "placeholder-injected-per-request-by-key-resolver"
+  - model_name: deepseek/*
+    litellm_params:
+      model: deepseek/*
+      api_key: "placeholder-injected-per-request-by-key-resolver"
+  - model_name: qwen/*
+    litellm_params:
+      model: dashscope/*
+      api_key: "placeholder-injected-per-request-by-key-resolver"
+  - model_name: volcengine/*
+    litellm_params:
+      model: volcengine/*
+      api_key: "placeholder-injected-per-request-by-key-resolver"
+
+general_settings:
+  # 平台 token 鉴权 + 软授权预检(tech-design §2.5)
+  custom_auth: plugins.platform_auth.user_api_key_auth
+
+litellm_settings:
+  callbacks:
+    - plugins.key_resolver.key_resolver_instance      # pre-call:Key 路由与注入
+    - plugins.usage_publisher.usage_publisher_instance # 成功/失败:usage.completed
+  # Langfuse 内置 callback 随 M2 telemetry 接入(隐私执行点在网关,tech-design §4.3)
+
+router_settings:
+  # 重试/熔断初始参数(tech-design §2.2:连续 5xx/429 半开熔断);数值待压测调整
+  num_retries: 2
+  allowed_fails: 5
+  cooldown_time: 30

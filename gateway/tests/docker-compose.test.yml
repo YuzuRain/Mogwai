@@ -1,0 +1,54 @@
+# gateway 集成测试编排:真实 Redis + 测试替身上游 + 被测网关 + pytest 容器。
+# 入口:gateway/tests/run.sh
+name: mogwai-gateway-test
+
+services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 15
+
+  fake-provider:
+    build: ./fake_provider
+    environment:
+      REDIS_HOST: redis
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  litellm:
+    build:
+      context: ../..
+      dockerfile: gateway/Dockerfile
+    volumes:
+      # 测试配置覆盖生产配置:仅改 api_base 指向测试替身,插件与鉴权设置一致
+      - ./litellm-config.test.yaml:/app/config.yaml:ro
+    environment:
+      MOGWAI_REDIS_URL: redis://redis:6379/0
+      MOGWAI_KMS_BACKEND: env_kek
+      MOGWAI_DEV_KEK: "5ff2e64ecb2eb27f0f28f3c31fcd7b3ea0f54b6c78dd85df42d0367bf35430c7"
+      MOGWAI_SPOOL_PATH: /tmp/usage-spool.jsonl
+      LITELLM_MASTER_KEY: "sk-test-master-not-used"
+      LITELLM_TELEMETRY: "False"
+    depends_on:
+      redis:
+        condition: service_healthy
+      fake-provider:
+        condition: service_started
+
+  tests:
+    build: .
+    environment:
+      GATEWAY_URL: http://litellm:4000
+      REDIS_URL: redis://redis:6379/0
+      MOGWAI_DEV_KEK: "5ff2e64ecb2eb27f0f28f3c31fcd7b3ea0f54b6c78dd85df42d0367bf35430c7"
+    volumes:
+      - ../plugins:/gateway-plugins:ro                      # spool.py 单元级测试
+      - ../../packages/shared/schemas/json:/contracts:ro    # 事件按契约工件断言
+    depends_on:
+      litellm:
+        condition: service_started
+    profiles: ["test"]

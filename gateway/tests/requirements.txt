@@ -1,0 +1,5 @@
+pytest~=8.0
+redis~=6.0
+httpx~=0.28
+jsonschema~=4.23
+cryptography~=45.0

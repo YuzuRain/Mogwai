@@ -1,0 +1,26 @@
+# 测试配置:与生产配置(gateway/litellm-config.yaml)唯一的区别是
+# api_base 指向 fake-provider 测试替身(付费 LLM API 的替身,no-mocks 规则允许)。
+# 鉴权、callback、路由参数必须与生产配置保持一致——测的是同一套插件行为。
+
+model_list:
+  - model_name: openai/*
+    litellm_params:
+      model: openai/*
+      api_base: http://fake-provider:8080/v1
+      api_key: "placeholder-injected-per-request-by-key-resolver"
+  - model_name: anthropic/*
+    litellm_params:
+      model: anthropic/*
+      api_base: http://fake-provider:8080
+      api_key: "placeholder-injected-per-request-by-key-resolver"
+
+general_settings:
+  custom_auth: plugins.platform_auth.user_api_key_auth
+
+litellm_settings:
+  callbacks:
+    - plugins.key_resolver.key_resolver_instance
+    - plugins.usage_publisher.usage_publisher_instance
+
+router_settings:
+  num_retries: 0 # 失败路径测试需要确定性的单次调用

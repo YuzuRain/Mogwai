@@ -1,0 +1,6 @@
+# gateway 镜像以仓库根为构建上下文(要打包 packages/shared/schemas);
+# 只放行真正需要的路径,其余全部排除。
+*
+!gateway/plugins/
+!gateway/litellm-config.yaml
+!packages/shared/schemas/json/

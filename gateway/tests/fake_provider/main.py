@@ -1,8 +1,8 @@
-"""fake_provider: OpenAI-compatible upstream TEST DOUBLE.
+"""fake_provider: OpenAI/Anthropic 兼容上游的测试替身。
 
-Stands in for a paid LLM provider only (allowed by the no-mocks rule). Records
-the Authorization header it receives into Redis so verify.sh can assert that
-key_resolver injected the decrypted BYOK key end-to-end.
+只替代付费 LLM API(no-mocks 规则允许的唯一豁免)。为了让测试能断言
+Key 注入真实发生,它把收到的鉴权头写入 Redis;模型名含 "err" 时返回 500,
+用于驱动网关的失败回调路径。
 """
 
 import os
@@ -16,28 +16,26 @@ from fastapi.responses import JSONResponse
 app = FastAPI()
 r = redis.Redis(host=os.environ["REDIS_HOST"], port=6379, decode_responses=True)
 
-LAST_AUTH_KEY = "spike:last_provider_auth"
-LAST_ANTHROPIC_AUTH_KEY = "spike:last_anthropic_auth"
-
-
-@app.get("/v1/models")
-def models():
-    return {"object": "list", "data": [{"id": "gpt-3.5-turbo", "object": "model"}]}
+OPENAI_AUTH_KEY = "test:last_openai_auth"
+ANTHROPIC_AUTH_KEY = "test:last_anthropic_auth"
 
 
 @app.post("/v1/chat/completions")
 async def chat_completions(request: Request):
-    r.set(LAST_AUTH_KEY, request.headers.get("authorization", "<missing>"))
+    r.set(OPENAI_AUTH_KEY, request.headers.get("authorization", "<missing>"))
     body = await request.json()
+    model = body.get("model", "gpt-4o-mini")
+    if "err" in model:
+        return JSONResponse(status_code=500, content={"error": {"message": "upstream boom"}})
     return {
         "id": f"chatcmpl-{uuid.uuid4().hex[:12]}",
         "object": "chat.completion",
         "created": int(time.time()),
-        "model": body.get("model", "gpt-3.5-turbo"),
+        "model": model,
         "choices": [
             {
                 "index": 0,
-                "message": {"role": "assistant", "content": "spike upstream reply"},
+                "message": {"role": "assistant", "content": "fake upstream reply"},
                 "finish_reason": "stop",
             }
         ],
@@ -47,14 +45,14 @@ async def chat_completions(request: Request):
 
 @app.post("/v1/messages")
 async def anthropic_messages(request: Request):
-    r.set(LAST_ANTHROPIC_AUTH_KEY, request.headers.get("x-api-key", "<missing>"))
+    r.set(ANTHROPIC_AUTH_KEY, request.headers.get("x-api-key", "<missing>"))
     body = await request.json()
     return {
         "id": f"msg_{uuid.uuid4().hex[:12]}",
         "type": "message",
         "role": "assistant",
         "model": body.get("model", "claude-3-haiku"),
-        "content": [{"type": "text", "text": "spike upstream reply"}],
+        "content": [{"type": "text", "text": "fake upstream reply"}],
         "stop_reason": "end_turn",
         "stop_sequence": None,
         "usage": {"input_tokens": 42, "output_tokens": 7},
@@ -63,6 +61,5 @@ async def anthropic_messages(request: Request):
 
 @app.post("/{path:path}")
 async def catch_all(path: str, request: Request):
-    # 快速定位 LiteLLM 实际调用的上游路径
-    r.set("spike:last_unknown_path", "/" + path)
+    r.set("test:last_unknown_path", "/" + path)
     return JSONResponse(status_code=404, content={"detail": f"fake_provider: no route /{path}"})
