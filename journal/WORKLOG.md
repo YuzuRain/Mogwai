@@ -133,3 +133,62 @@
 - 本机安装 pnpm(npm -g);typescript 钉 ^5(7.x 与 tsup dts 插件不兼容)
 - README 新增「开发」快速入口
 **引用**: packages/shared/ · infra/docker-compose.yml · docs/architecture.md A4/A5 · journal/TODO.md M1
+
+## 2026-07-27 · gateway 正式实现:LiteLLM + 三插件,13 集成测试全过
+
+**目的**: 把 spike 验证过的插件架构抬进正式 `gateway/`,补齐 spike 刻意简化的全部路径(M1 gateway 主项)
+**改动**:
+- 新建 `gateway/`(独立部署单元):三插件完整版——platform_auth(401/403 + 读授权投影做 402 软预检,裁定由 billing 预计算,网关只读标记)、key_resolver(债务清偿路由>BYOK>平台池优先级;信封解密走 KMS 接口;模型白名单;credits 存在即 NotImplementedError 响亮失败)、usage_publisher(成功/失败双路;出网关前按 shared 的 JSON Schema 工件校验;XADD 失败写本地 spool、后续回调自动补投)
+- `plugins/kms.py`:KMS 统一接口 + env_kek(dev)/ openbao_transit 双实现;`encrypted_dek` 线格式契约写进 shared key-routing.ts 注释与 gateway README
+- 生产配置 5 provider 通配路由(qwen→dashscope、火山方舟→volcengine 映射未经真实 Key 冒烟,记 TODO);Dockerfile 以仓库根为构建上下文打包契约工件,根 .dockerignore 白名单控制
+- `gateway/tests/`:pytest 集成测试 13 个全过(`tests/run.sh` 一键),真实 Redis + 真实 LiteLLM 容器,唯一替身 fake_provider(把收到的鉴权头写回 Redis,Key 注入逐字节断言);覆盖鉴权矩阵/解密注入/白名单/债务路由响亮失败/双协议/事件契约校验/spool 落盘补投
+- 实现级发现:`/v1/messages` 路由的回调 kwargs 里模型名不带 provider 前缀,provider 归因必须取回调顶层 `custom_llm_provider`,前缀解析仅兜底(usage_publisher 已修,测试锁定)
+- `infra/docker-compose.yml` 新增 litellm 服务(gateway profile,默认不起);Langfuse callback 顺延 M2 telemetry;architecture A4 目录树、根 README 开发入口同步
+- 按 spike README 约定删除 `test/litellm-spike/`(结论已入 WORKLOG,fake_provider 演进版并入 gateway/tests)
+- TODO:M4 前置契约缺口立项——`usage.completed.key_source` 需债务路由变体 + 债务人引用,billing 冲销记账依赖
+**引用**: gateway/ · docs/architecture.md A4 · packages/shared/src/projections/key-routing.ts · journal/TODO.md M1/M4
+
+## 2026-07-28 · gateway 静默 fallback 审计与清除(修正 2026-07-27 实现)
+
+**目的**: 用户要求排查遗留口子;审计发现 6 处静默 fallback,全部清除——计费事件字段必须有权威来源,来源缺失一律响亮失败
+**改动**:
+- usage_publisher:`key_source` / `custom_llm_provider` / `litellm_call_id` 由「缺失时默认 byok / 前缀解析 / 随机 UUID」全部改为缺失即抛 ValueError(callback 错误进 litellm 日志 + 每日对账兜底);token 估算失败保留 0+estimated 降级但补带堆栈的 ERROR 日志(降级必须显式留痕)
+- **key_source 改必填后立刻抓出被默认值掩盖的真 bug**:`/v1/messages` 路由上 `metadata` 是 Anthropic API 自己的请求字段,litellm 用 `litellm_metadata` 承载代理元数据,key_resolver 之前写 `data["metadata"]` 在该路由根本流不到回调。已修:key_resolver 按路由选键写入;usage_publisher 对 metadata/litellm_metadata 两个已知位置做确定性合并;anthropic 用例加 key_source 断言锁定通道
+- platform_auth:`privacy_mode` 缺失不再默认 "0"(静默降级成非隐私是隐私违规),投影缺必填字段 → 500 "projection corrupt"
+- spool:print 改 logging(print 在 litellm 容器被 stdout 缓冲吞掉,2026-07-27 调试实证——原"响亮"告警实际不可见);补投成功也记 WARNING 留审计痕
+- 13 集成测试全过;此后 key_source/provider 断言不再有默认值撑腰,真实检验元数据链路
+**引用**: gateway/plugins/ · gateway/tests/test_gateway.py · journal/TODO.md M1
+
+## 2026-07-28 · gateway 依赖缺口盘点(补录 TODO 与边界文档)
+
+**目的**: 盘点 gateway 因等待其他模块而未闭合的路径,并把审计中新发现的自身缺口立项
+**改动**:
+- gateway/README.md 已知边界重写:按「等待谁解除」列全依赖缺口(投影无生产写入方=生产不可用、authz 缺失 fail-open 语义、usage 流无消费者/无 trim、事件丢失兜底靠未建的对账 worker、OpenBaoTransitKms 未经真实验证)
+- shared authorization.ts 补缺失语义注释:投影不存在 = 放行(fail-open),前提是 billing 保证「有账本活动就有投影」
+- TODO 新增 4 项:gateway 流式 SSE 用例(自身缺口,coding agent 主流量)、rpm/tpm 限流接线(自身缺口,schema 字段已备)、OpenBaoTransitKms 真实集成测试(随 account/OpenBao)、usage 流 trim 策略(随首个消费者)
+**引用**: gateway/README.md · packages/shared/src/projections/authorization.ts · journal/TODO.md
+
+## 2026-07-28 · billing 数据库契约:M1 四表迁移 + 账本双录约束(11 测试打真实 Postgres 全过)
+
+**目的**: M1 关键路径下一环——表结构即契约,为 account/billing 实现打地基(TODO billing 迁移项)
+**改动**:
+- **账本记账模型定稿**(tech-design §3.5 重写):一个经济事实 = 一个 txn(≥2 分录、Σdelta_cp=0,Postgres 延迟约束触发器提交时强制);科目 = 关系类型(pledge/debt/service_fee),双方同科目反符号;PLATFORM 哨兵账户作平台侧对手方;幂等键 (event_id, seq);只增不改(UPDATE/DELETE 触发器拒绝,更正走冲销 txn);可用担保额度 = pledge_limit_cp − pledge 净头寸
+- **公式存储裁定**(REVIEW Block 14,已按推荐实现待追认):credit_formula 并入 config_versions,一个版本 = 完整规则集(合约引用单版本号锁定全部匹配逻辑);§3.4 原独立表 SQL 改为 payload 结构;同 namespace 单 active 由部分唯一索引强制
+- `packages/shared` 新增 config/credit-formula.ts(payload zod schema,admin 写入与 billing 求值共用,含 global 兜底规则校验)
+- `apps/core-app` 落地(暂只有 db 契约层,NestJS 随 API 实现):account/billing/admin 三模块 drizzle schema;B3 同步修订(provider_keys 补 nonce、ledger 加 txn_id/seq、config 唯一约束)
+- `infra/migrations`:0000 建表 + 0001 手写约束迁移(双录触发器/append-only 触发器/PLATFORM 哨兵)
+- seed:credit_formula v1 active(1000 CP/USD、BYOK 服务费 5%、tier_discount 1),幂等
+- 11 个集成测试打真实 Postgres(重建 mogwai_test 跑全量迁移):平衡/不平衡/单分录、幂等重放、UPDATE/DELETE 拒绝、delta=0 CHECK、哨兵行、seed 幂等、单 active 约束、draft 并存
+- 工具链:pnpm 11 构建放行改用 allowBuilds(approve-builds 登记 esbuild,原 onlyBuiltDependencies 保留)
+**引用**: docs/tech-design.md §3.4/§3.5 · docs/architecture.md B3 · docs/REVIEW.md Block 14 · apps/core-app/ · infra/migrations/ · packages/shared/src/config/
+
+## 2026-07-28 · core-app REST API 面契约定稿(architecture B4.1 + shared DTO 层)
+
+**目的**: M1 最后一块契约拼图——管理面 API 定稿,解锁 account/billing 的 NestJS 实现(TODO core-app API 面设计项)
+**改动**:
+- **architecture 新增 B4.1**:数据面(gateway `/v1/*`,平台 token)与管理面(core-app `/api/v1/*`,better-auth session cookie)彻底分离,M1 管理 API 不对第三方开放;通用约定定稿——错误信封 `{error:{code,message,details?}}`、`域/原因` 错误码注册表、422 承载 zod issues、cursor 分页、密钥材料红线(Key 明文只进录入请求体、token 明文只出签发响应体一次);14 个 M1 端点表(account 9 / billing 2 / admin 3)含每个端点的投影副作用归属——投影写入是拥有方模块的同步副作用,不允许异步补写
+- `packages/shared` 新增 API 契约层:`src/api/`(error-codes 注册表含 HTTP 映射、分页 helper、account/billing/admin DTO)+ `src/domain/`(PROVIDERS、KEY_STATUSES、LEDGER_ACCOUNTS、PLATFORM_USER_ID 收编为单一权威);configPayloadSchemas 注册表——namespace 无 schema 即拒写(422 config/payload_schema_missing),杜绝无契约配置入库
+- 消除刚埋下的重复定义:core-app 表定义改引 shared 枚举,CHECK 约束用同一常量构造且渲染文本不变(drizzle-kit 确认零迁移噪音)
+- admin 端点鉴权(admin 角色)依赖 better-auth admin 插件,随 account 实现落地(TODO 已立项)
+- 全量 34 测试过(shared 23 含新 8 个 API 契约用例;core-app 11 打真实 Postgres)
+**引用**: docs/architecture.md B4.1 · packages/shared/src/api/ + src/domain/ · apps/core-app/src/modules/ · journal/TODO.md M1

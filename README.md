@@ -90,9 +90,12 @@ pnpm install
 pnpm test                              # 契约测试(packages/shared)
 docker-compose -f infra/docker-compose.yml up -d   # Postgres 16 / Redis 7 / ClickHouse
 pnpm export:schemas                    # zod → JSON Schema(gateway Python 侧校验用)
+gateway/tests/run.sh                   # 网关集成测试(一键起真实依赖 + pytest)
+pnpm --filter @mogwai/core-app db:migrate   # 数据库迁移(infra/migrations,drizzle-kit)
+pnpm --filter @mogwai/core-app db:seed      # 配置中心初始参数(credit_formula v1)
 ```
 
-事件与投影的权威契约在 `packages/shared`(zod);变更契约必须重新导出 JSON Schema 并同步设计文档(architecture A5)。网关插件架构的可行性验证在 `test/litellm-spike/`。
+事件与投影的权威契约在 `packages/shared`(zod);变更契约必须重新导出 JSON Schema 并同步设计文档(architecture A5)。LLM 网关(LiteLLM + 三插件)的设计与运行说明见 [gateway/README.md](gateway/README.md)。
 
 ## 预览产品文档
 

@@ -249,6 +249,22 @@
 
 ---
 
+## Block 14 · 折算公式的存储:并入 config_versions 还是独立表(2026-07-28 billing 迁移新增)
+
+**问题**
+
+tech-design §3.4(原稿)给了独立的 `credit_formula` 表(scope 每行独立),architecture B3 给的是通用配置中心 `config_versions`(namespace 机制)。两文档冲突,M1 迁移必须二选一。
+
+**候选方案**
+
+1. **并入 `config_versions`,一个版本 = 完整规则集**(payload 内含按 scope 排序的规则数组)。优点:`ledger_entries.formula_version` 引用一个版本号即锁定全部匹配逻辑(model > provider > global),合约化(§1.5)与审计重算无歧义;draft/gray/active 机制全 namespace 统一,后续 ev_weights / gacha_rates 免费复用。缺点:改单条 model 规则也要发全量新版本(单人运营可接受)。
+2. 按原 §3.4 独立 `credit_formula` 表,scope 每行独立版本。优点:单条规则可独立灰度。缺点:一笔计费引用「多行版本的组合」,合约引用与回放需要记录组合快照,复杂度高;配置机制两套。
+
+**评审结论**:🔧 已按方案 1 实现(2026-07-28),待追认
+**意见**:_(待填)_
+
+---
+
 ## 汇总表(review 完后勾选)
 
 | Block | 主题 | 结论 |
@@ -266,5 +282,6 @@
 | 11 | 技术架构 | ✅ TS 全栈 + Redis Streams |
 | 12 | 路线图 | ✅ 不做 Demo,直接 M1;按范围验收 |
 | 13 | BYOK CP 冷启动 | ✅ 纯记账制(已落正式文档) |
+| 14 | 公式存储位置 | 🔧 已按「并入 config_versions」实现,待追认 |
 
-> 13 个 Block 全部有结论(2026-07-25)。裁定均已回写正式文档;本文档待 M1 开工后归档删除。
+> Block 1–13 全部有结论(2026-07-25),裁定均已回写正式文档;Block 14 为 M1 开发期新增,待裁定。

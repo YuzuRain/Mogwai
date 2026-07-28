@@ -210,30 +210,47 @@ credit     = ceil( usd_cost * fx_rate * margin * tier_discount )
 
 ### 3.4 版本化与生效
 
-```sql
-CREATE TABLE credit_formula (
-  id            BIGSERIAL PRIMARY KEY,
-  version       TEXT NOT NULL,          -- v3
-  scope         TEXT NOT NULL,          -- global | provider:openai | model:openai/gpt-5
-  expression    TEXT NOT NULL,          -- DSL 文本
-  variables     JSONB NOT NULL,         -- 默认变量值
-  status        TEXT NOT NULL,          -- draft / gray / active / retired
-  effective_at  TIMESTAMPTZ NOT NULL,
-  created_by    TEXT NOT NULL
-);
+公式不设独立表,统一存配置中心 `config_versions`(namespace = `credit_formula`,表结构见架构文档 B3;裁定过程见 REVIEW Block 14)。**一个版本 = 完整规则集**,payload 结构:
+
+```jsonc
+// config_versions.payload(namespace: credit_formula)
+{
+  "rules": [
+    // 匹配优先级:model 级 > provider 级 > global;命中即停
+    { "scope": "model:openai/gpt-5", "expression": "...", "variables": { ... } },
+    { "scope": "provider:openai",    "expression": "...", "variables": { ... } },
+    { "scope": "global",
+      "expression": "ceil((input_tokens / 1e6 * price.input + output_tokens / 1e6 * price.output + cached_tokens / 1e6 * price.cached) * fx_rate * margin * tier_discount)",
+      "variables": { "fx_rate": 1000, "margin": 0.05, "tier_discount": 1 } }
+  ]
+}
 ```
 
-- 匹配优先级:`model 级 > provider 级 > global`;
-- 变更流程:draft → 沙箱回放最近 7 天账单做 diff 预览 → gray(按用户百分比)→ active;
+- payload 的 zod schema 在 `packages/shared`(`config/credit-formula.ts`),admin 写入与 billing 求值共用;
+- 整集版本化的含义:改任何一条规则都发新版本——`ledger_entries.formula_version` 引用一个版本号即锁定**全部**匹配逻辑,审计重算无歧义;
+- 变更流程:draft → 沙箱回放最近 7 天账单做 diff 预览 → gray(按用户百分比,`gray_ratio`)→ active;同 namespace 同时只允许一个 active(部分唯一索引强制);
 - 每笔扣费记录 `formula_version` + 变量快照,可完整审计重算。
 
 ### 3.5 账本(纯记账制,平台零托管)
 
 **CP 是记账单位,不是托管货币**——平台不持有、不没收、不抽取任何用户资产,只负责记账与清偿路由(合规基石:平台是撮合与记账方,不是赌局参与方,收入只来自服务费,与输赢无关)。
 
-- 复式记账,`ledger_entry` 只增不改,所有记账以 `event_id` 幂等;
-- 账本上的科目是**关系**而非资金:`pledge_locked`(对战担保锁定)、`debt`(用户↔用户的债权债务)、`service_receivable`(平台服务费应收);
-- 战斗质押 = 锁定担保额度;败方损失 = 记一笔对胜方的债务;清偿机制见 [§10](#10-赛后结算与经济系统)。
+**记账模型**(2026-07-28 定稿,随 M1 迁移落库):
+
+- 一个经济事实 = 一个 **txn**(`txn_id`),由 ≥2 条分录组成,**每 txn 所有 `delta_cp` 之和必须为 0**——双录一致性由 Postgres 延迟约束触发器(`DEFERRABLE INITIALLY DEFERRED`)在事务提交时强制,应用层写错直接提交失败;
+- 平台以哨兵账户 **`PLATFORM`**(users 表内置行)作为对手方入账,使服务费等平台相关事实同样双边平衡;
+- 科目 = **关系类型**,txn 双方用同一科目、符号相反,净头寸 = `SUM(delta_cp) GROUP BY user, account`:
+
+| 科目 | 语义 | 典型 txn(分录对) |
+|---|---|---|
+| `service_fee` | 平台服务费应收/应付 | 用户 `-x`(cp=PLATFORM)/ PLATFORM `+x`(cp=用户) |
+| `debt` | 用户↔用户债权债务 | 败方 `-500`(cp=胜方)/ 胜方 `+500`(cp=败方) |
+| `pledge` | 对战担保锁定 | 用户 `+500`(cp=PLATFORM)/ PLATFORM `-500`(cp=用户);释放反向 |
+
+- 用户可用担保额度 = `users.pledge_limit_cp` − 该用户 `pledge` 科目净头寸;
+- **幂等**:分录带 `(event_id, seq)` 唯一键;消费者把一个事件的全部分录在单事务写入,重复消费触发唯一冲突整体回滚;
+- **只增不改**:UPDATE / DELETE 被触发器直接拒绝;更正一律写冲销 txn(`reason=reversal`,`ref_type=txn` 引用原 txn);
+- **合约化**(§1.5):计费类 txn 必带 `formula_version` + 变量快照 `snapshot`(应用层保证;非计费 reason 不强制,不做 DB 约束)。
 
 ---
 

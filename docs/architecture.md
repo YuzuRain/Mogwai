@@ -130,15 +130,19 @@ flowchart TB
 ## A4. 网关层设计(LiteLLM 落地方式)
 
 ```
-gateway/(独立部署单元,非 TS monorepo 的一部分)
-├── litellm-config.yaml        # 模型清单、平台 Key 池、路由/重试/熔断参数
-└── plugins/                   # mogwai 扩展,全部逻辑 < 500 行,无业务规则
-    ├── platform_auth.py       # custom_auth hook:平台 API token → user_id/trainer_id
-    ├── key_resolver.py        # pre-call hook:查 Redis 投影 → 债务清偿路由 > BYOK > 平台池
-    │                          #   → KMS 解密(内存中用完即弃)→ 注入本次请求
-    └── usage_publisher.py     # success/failure callback:组装 usage.completed
-                               #   (event_id 幂等键 + token 数 + langfuse_trace_id)
-                               #   → XADD 到 Redis Streams
+gateway/(独立部署单元,非 TS monorepo 的一部分;详见 gateway/README.md)
+├── litellm-config.yaml        # 模型清单(5 provider 通配路由)、重试/熔断参数
+├── Dockerfile                 # litellm 官方镜像 + 插件 + JSON Schema 契约工件
+├── plugins/                   # mogwai 扩展,薄、无业务规则
+│   ├── mogwai_common.py       # Redis 连接、env 配置、投影/流命名(镜像 shared)
+│   ├── kms.py                 # KMS 客户端接口:env_kek(dev)/ openbao_transit / 云 KMS(M4+)
+│   ├── spool.py               # usage 事件本地 spool(独立模块,可单测)
+│   ├── platform_auth.py       # custom_auth hook:平台 API token → user_id(+软授权预检)
+│   ├── key_resolver.py        # pre-call hook:查 Redis 投影 → 债务清偿路由 > BYOK > 平台池
+│   │                          #   → KMS 解密(内存中用完即弃)→ 注入本次请求
+│   └── usage_publisher.py     # success/failure callback:组装 usage.completed
+│                              #   → 按 JSON Schema 契约工件校验 → XADD 到 Redis Streams
+└── tests/                     # pytest 集成测试:真实 Redis + 真实 LiteLLM + 上游测试替身
 ```
 
 - **三个 Redis 投影,保证网关不触 PostgreSQL**(account / billing 在数据变更时写入,网关只读):
@@ -234,23 +238,29 @@ mogwai/
 ## B3. 核心数据模型(PostgreSQL)
 
 ```sql
--- 账户与 Key
-users(id, email, tier, privacy_mode,
+-- 账户与 Key(users 内置 PLATFORM 哨兵行,账本双录的平台侧对手方,§3.5)
+users(id, email UNIQUE, tier, privacy_mode,
       pledge_limit_cp BIGINT,                                   -- 用户自设的对战担保额度上限
       created_at)
-provider_keys(id, user_id, provider, encrypted_dek, ciphertext,
-              model_whitelist jsonb, status, last_verified_at)
+provider_keys(id, user_id, provider,
+              encrypted_dek, ciphertext, nonce,                 -- 信封加密三件套,与 Key 路由投影同构(shared key-routing.ts)
+              model_whitelist jsonb, status, last_verified_at, created_at)
 
--- 账本(只增;纯记账制,CP 为记账单位,平台零托管,见技术设计 §3.5)
-ledger_entries(id, event_id UNIQUE, user_id, account,          -- pledge_locked|debt|service_receivable
-               counterparty_id,                                 -- debt 科目的对手方(债权人/债务人)
-               delta_cp BIGINT, reason, ref_type, ref_id,       -- battle|usage|gacha|settlement
+-- 账本(只增;纯记账制;详设与科目语义见技术设计 §3.5)
+ledger_entries(id, txn_id,                                      -- 一个经济事实 = 一个 txn(≥2 条分录)
+               event_id, seq, UNIQUE(event_id, seq),            -- 幂等键:整事件分录单事务写入
+               user_id, account,                                -- pledge|debt|service_fee(关系型科目,双方同科目反符号)
+               counterparty_id,                                  -- 对手方(用户或 PLATFORM)
+               delta_cp BIGINT, reason, ref_type, ref_id,        -- battle|usage|gacha|settlement|txn(冲销)
                formula_version, snapshot jsonb, created_at)
+-- 约束(迁移内置):每 txn Σdelta_cp = 0(延迟约束触发器)+ 禁 UPDATE/DELETE 触发器
 
--- 配置中心(公式/权重/概率共用)
+-- 配置中心(公式/权重/概率共用;credit_formula 并入此表,REVIEW Block 14)
 config_versions(id, namespace,                                  -- credit_formula|ev_weights|gacha_rates|battle_params
-                version, payload jsonb, status,                 -- draft|gray|active|retired
-                gray_ratio, effective_at, created_by)
+                version, UNIQUE(namespace, version),
+                payload jsonb, status,                          -- draft|gray|active|retired
+                gray_ratio, effective_at, created_by,
+                UNIQUE(namespace) WHERE status = 'active')      -- 同 namespace 单 active
 
 -- 游戏
 trainers(id, user_id, species_id, level, exp BIGINT,
@@ -293,6 +303,49 @@ export function evaluateCredit(
   vars: Record<string, number> // tokens、price.*、fx_rate...
 ): { creditCost: number; trace: EvalTrace };  // trace 用于账单审计展示
 ```
+
+### B4.1 REST API 面(web ↔ core-app 管理面,M1 范围)
+
+数据面与管理面彻底分离:**数据面**是 gateway 的 `/v1/*`(平台 token 鉴权,见 A4),
+**管理面**是 core-app 的 `/api/v1/*`(better-auth session cookie,控制台是唯一调用方;
+M1 不对第三方开放管理 API)。auth 本身(注册/登录/session)由 better-auth 托管在
+`/api/auth/*`,不重复设计。
+
+**通用约定**
+
+- 所有请求/响应 DTO 的 zod schema 在 `packages/shared` `src/api/`(单一权威):
+  server 校验入参,web 复用同一 schema 取类型;改 DTO 必须同步本节;
+- 错误统一信封 `{ "error": { "code", "message", "details?" } }`;`code` 为
+  `域/原因` 结构化字符串,注册表(含 HTTP 状态映射)在 shared `src/api/error-codes.ts`,
+  新增错误码只允许加进注册表,禁止散落字面量;
+- 入参校验失败一律 422 `validation/invalid_request`,`details` 携带 zod issues;
+- 列表分页用 cursor(`?cursor=&limit=`,响应 `{ items, next_cursor }`);账本只增,
+  cursor 天然稳定;
+- 密钥材料的红线:provider key 明文只出现在 `POST keys` 的请求体,平台 token 明文
+  只出现在 `POST tokens` 的响应体(签发时一次),任何 GET 都不吐密文/明文/哈希原文。
+
+**M1 端点**(路由前缀 = 模块边界,B2 铁律在 API 面同样成立)
+
+| 模块 | 端点 | 行为(副作用) |
+|---|---|---|
+| account | `GET /api/v1/account/profile` | 用户信息 + privacy_mode + pledge_limit_cp |
+| account | `PATCH /api/v1/account/profile` | 改 privacy_mode(→ 重写全部 token 投影);pledge_limit 随 M4 开放 |
+| account | `GET /api/v1/account/tokens` | 平台 token 列表(仅前缀+元数据) |
+| account | `POST /api/v1/account/tokens` | 签发 token(明文仅此响应一次)→ 写 token 投影 |
+| account | `DELETE /api/v1/account/tokens/:id` | 吊销 → 删 token 投影 |
+| account | `GET /api/v1/account/keys` | 托管 Key 列表(status/whitelist/巡检时间,永不含密文) |
+| account | `POST /api/v1/account/keys` | 录入:信封加密落库 → 异步探测校验(§2.1)→ 写 Key 路由投影 |
+| account | `PATCH /api/v1/account/keys/:id` | 改模型白名单 → 同步投影 |
+| account | `DELETE /api/v1/account/keys/:id` | status→revoked + 移出投影;DB 行保留审计 |
+| billing | `GET /api/v1/billing/positions` | 各科目净头寸 + 可用担保额度(§3.5 口径) |
+| billing | `GET /api/v1/billing/ledger` | 分录分页(txn_id/reason/formula_version/snapshot,逐笔折算追溯) |
+| admin | `GET /api/v1/admin/configs?namespace=` | 配置版本列表 |
+| admin | `POST /api/v1/admin/configs` | 新建 draft(payload 按 namespace 的 shared schema 校验) |
+| admin | `POST /api/v1/admin/configs/:id/activate` | draft→active,原 active→retired(单事务);灰度流程随 M2+ |
+
+- admin 端点需 admin 角色,角色机制随 better-auth admin 插件在 account 实现时落地;
+- 投影写入(token/Key 路由/授权)是对应端点的**同步副作用**,由拥有该数据的模块执行
+  (A4:account 写前两个投影,billing 写授权投影)——投影滞后即网关行为滞后,不允许异步补写。
 
 ## B5. 请求时序(两条主链路)
 

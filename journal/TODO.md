@@ -9,10 +9,17 @@
 - [x] **shared**:A5 全部 7 个事件的 zod schema + JSON Schema 导出(architecture A5)——第一个 PR,先于一切业务代码(2026-07-26 完成,15 测试含 spike 真实事件回归)
 - [x] **shared**:三个 Redis 投影的字段级 schema:平台 token 投影 / Key 路由投影 / 授权投影(architecture A4)(2026-07-26 完成)
 - [x] **gateway(第一步,验证最大风险)**:LiteLLM spike——验证 custom_auth / pre-call hook / success callback 三个扩展点能读 Redis 投影、注入解密 Key、组装 usage 事件;不成立则启动 Bifrost/自研预案(architecture A3 #1)(2026-07-25 完成,6/6 断言通过,`test/litellm-spike/`,结论见 WORKLOG)
-- [ ] **gateway**:LiteLLM Proxy 部署 + 3 个自研插件:platform_auth / key_resolver / usage_publisher(含本地 spool),Langfuse 隐私走内置 callback(architecture A4);provider 首发 5 家含火山方舟(tech-design §1.1);**验收含双协议:OpenAI 兼容 + Anthropic `/v1/messages`(Claude Code 接入硬需求,tech-design §2.2)**
+- [x] **gateway**:LiteLLM Proxy 部署 + 3 个自研插件:platform_auth / key_resolver / usage_publisher(含本地 spool),Langfuse 隐私走内置 callback(architecture A4);provider 首发 5 家含火山方舟(tech-design §1.1);**验收含双协议:OpenAI 兼容 + Anthropic `/v1/messages`(Claude Code 接入硬需求,tech-design §2.2)**(2026-07-27 完成:`gateway/`,13 集成测试全过,含 KMS 双后端接口与 spool 落盘/补投;Langfuse callback 顺延到 M2 telemetry,见 gateway/README.md 已知边界)
+- [ ] **gateway**:qwen→dashscope、火山方舟→volcengine 适配映射的真实 Key 人工冒烟(测试替身只覆盖 OpenAI/Anthropic 两种 wire format;不进 CI,gateway/README.md 已知边界)——**用户参与项**:等 account 模块能正常录 Key 后做,届时由 agent 出两分钟操作清单(2026-07-28 约定)
+- [ ] **gateway**:流式(SSE)集成用例——coding agent 主流量是流式,当前 13 个测试全部非流式;需验证流式透传 + 流结束后 usage 事件正确发布(fake_provider 补 SSE 响应)(2026-07-28 审计发现,不被其他模块阻塞)
+- [ ] **gateway**:rpm/tpm 限流接线——token 投影 schema 已有字段(shared projections/token.ts),platform_auth 未读取、未设置到 UserAPIKeyAuth(architecture A3 #3);不被其他模块阻塞,数据侧等 account 写投影(2026-07-28 审计发现)
+- [ ] **account(落地时)**:OpenBao 进 infra compose 后,给 gateway `OpenBaoTransitKms` 补真实集成测试——当前该后端代码存在但从未打过真实 OpenBao,只有 env_kek 被测试覆盖(gateway/plugins/kms.py)
+- [ ] **billing(首个消费者落地时)**:`events:usage.completed` 的 trim 策略——当前无消费组、无 MAXLEN,stream 无限增长;策略必须在全部消费组(billing/game.exp/telemetry/realtime)注册方式定下后才能定,生产部署前必须解决(architecture A5)
 - [ ] **web**:接入指南页(控制台一等公民):选工具 → 生成配置片段,覆盖 Claude Code / Codex CLI / Cline / Cursor / Trae(tech-design §2.2)
-- [ ] **billing**:PostgreSQL 迁移 users / provider_keys / ledger_entries / credit_rules(architecture B3),ledger 双录一致性约束;初始参数 1000 CP/USD、服务费 5%
-- [ ] **core-app**:REST API 面设计:端点、错误码、鉴权方式(目前文档只有模块边界没有 API 面)
+- [x] **billing**:PostgreSQL 迁移 users / provider_keys / ledger_entries / credit_rules(architecture B3),ledger 双录一致性约束;初始参数 1000 CP/USD、服务费 5%(2026-07-28 完成:`apps/core-app` drizzle schema + `infra/migrations`,双录 sum=0 延迟触发器 + append-only 触发器 + (event_id,seq) 幂等键 + PLATFORM 哨兵;公式并入 config_versions 待追认,REVIEW Block 14;11 集成测试打真实 Postgres 全过)
+- [x] **core-app**:REST API 面设计:端点、错误码、鉴权方式(2026-07-28 完成:architecture B4.1 定稿管理面契约——better-auth session 鉴权、错误信封 + 错误码注册表、cursor 分页、14 个 M1 端点及投影副作用归属;DTO/错误码/枚举 zod 单一权威落 `packages/shared` src/api/ + src/domain/,core-app 表定义改引 shared 枚举消除重复)
+- [ ] **core-app**:NestJS 应用骨架 + account 模块实现(better-auth 集成、token 签发/吊销写投影、Key 托管信封加密 + 异步探测校验写投影,按 B4.1 契约)——完成后 gateway 才有真实投影写入方,脱离手工 seed
+- [ ] **account(实现时)**:admin 角色机制随 better-auth admin 插件落地(B4.1:admin 端点鉴权依赖它)
 - [ ] **workers**:每日对账 BullMQ 任务:ledger vs LiteLLM 请求日志(tech-design §2.3)
 
 ## M2+ · 模块设计时再定(不前置拍板)
@@ -24,6 +31,7 @@
 - [ ] **match(M4)**:质押档位数值(REVIEW Block 8)
 - [ ] **billing(M4)**:平台自营 Key 池 + CP 直购(margin 1.15),随支付启用(REVIEW Block 2)
 - [ ] **battle/billing(M4)**:清偿路由两个已知设计输入(tech-design §10.3):provider 匹配缺口的债务滞留策略;清偿调用丢 prompt cache / 受债务人 rate limit 的范围限定策略
+- [ ] **gateway/shared(M4)**:债务清偿路由落地前先补契约:`usage.completed.key_source` 增加债务路由变体 + 债务人引用字段(billing 冲销记账需要知道该次调用跑在谁的 Key 上);当前 key_resolver 遇到 credits 直接 NotImplementedError(gateway/plugins/key_resolver.py)
 - [ ] **合规(M4 前)**:债务清偿模式(tech-design §10.3)过法务:败方 Key 承担胜方消耗对 provider ToS 的影响、用户告知文案
 - [ ] **game(M5)**:赛季机制 + EV 赛季重置规则(周衰减已取消,REVIEW Block 5);满级溢出 EXP 转赛季币;营养饮料等道具现金购买(依赖支付)
 
