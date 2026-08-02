@@ -35,6 +35,7 @@ export type CreditFormulaConfig = z.infer<typeof creditFormulaConfigSchema>;
 /** config_versions.namespace 的合法值(architecture B3);新增 namespace 时扩展此处。 */
 export const CONFIG_NAMESPACES = [
   "credit_formula",
+  "price_table",
   "ev_weights",
   "gacha_rates",
   "battle_params",

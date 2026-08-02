@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { CONFIG_NAMESPACES, creditFormulaConfigSchema } from "../config/credit-formula.js";
+import { priceTableConfigSchema } from "../config/price-table.js";
 
 /** admin 模块管理面 DTO(architecture B4.1;版本化语义见 tech-design §3.4)。 */
 
@@ -18,6 +19,7 @@ export const configPayloadSchemas: Partial<
   Record<z.infer<typeof configNamespaceSchema>, z.ZodType>
 > = {
   credit_formula: creditFormulaConfigSchema,
+  price_table: priceTableConfigSchema,
 };
 
 export const configVersionViewSchema = z.object({

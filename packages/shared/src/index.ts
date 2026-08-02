@@ -33,6 +33,12 @@ export {
   type CreditFormulaConfig,
   type CreditFormulaRule,
 } from "./config/credit-formula.js";
+export {
+  modelPriceSchema,
+  priceTableConfigSchema,
+  type ModelPrice,
+  type PriceTableConfig,
+} from "./config/price-table.js";
 
 export {
   KEY_STATUSES,
