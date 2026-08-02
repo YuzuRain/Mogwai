@@ -115,8 +115,10 @@ gateway/tests/run.sh   # 一键:构建 → 起真实 Redis + 测试替身上游 
 
 因等待其他模块(现在的行为 → 谁来解除):
 
-- **投影没有生产写入方**:token / Key 路由投影等 account,授权投影等 billing。
-  在此之前网关生产不可用(一切请求 401)——只有测试 seed 在写投影;
+- **token / Key 路由投影已有生产写入方**(2026-08-02):account 模块
+  (apps/core-app)在 token 签发、Key 托管激活时同步写入;信封线格式互通由
+  跨语言向量测试锁死(tests/test_kms_vector.py ↔ apps/core-app envelope.ts)。
+  授权投影仍等 billing——缺失 = 放行,见下一条;
 - **授权投影缺失 = 放行(fail-open)**:新用户没有账本活动就没有投影,这是
   正常态;billing 上线后必须保证「有账本活动就有投影」,否则欠费用户裸奔;
 - **`usage.completed` 尚无消费者**:没有消费组、没有 MAXLEN,stream 无限增长;

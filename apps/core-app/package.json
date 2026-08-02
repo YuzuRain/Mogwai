@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "worker": "tsx src/worker.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx src/seed/seed-config.ts",
@@ -11,11 +14,22 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@mogwai/formula-engine": "workspace:*",
     "@mogwai/shared": "workspace:*",
+    "@nestjs/common": "^11.1.28",
+    "@nestjs/core": "^11.1.28",
+    "@nestjs/platform-express": "^11.1.28",
+    "better-auth": "^1.6.25",
     "drizzle-orm": "^0.45.1",
-    "pg": "^8.16.3"
+    "express": "^5.2.1",
+    "ioredis": "^6.0.0",
+    "pg": "^8.16.3",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/express": "^5.0.6",
     "@types/node": "^26.1.1",
     "@types/pg": "^8.15.4",
     "drizzle-kit": "^0.31.9",

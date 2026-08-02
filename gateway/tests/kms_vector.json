@@ -1,0 +1,8 @@
+{
+  "_comment": "TS encrypt-side vector (apps/core-app scripts/gen-kms-vector.ts); python decrypt-side must recover plaintext",
+  "kek_hex": "aabbccddeeff00112233445566778899aabbccddeeff00112233445566778899",
+  "plaintext": "sk-mogwai-cross-language-vector",
+  "nonce": "HJJfZh3VtpbEbZR8",
+  "ciphertext": "tENzCiMmUvX/4UL/Y9VVDDjRg3OXUHjVbEnZMlraOgLuuSPs8fBONo9d0KTU+mQ=",
+  "encrypted_dek": "THjTgr9EtTVFAjQfkD0fzTpV2F48YebNsEHYchh75XjSBsHNnoE6Jofn8Gp0H3E42rQrc3+lrAYoj2UN"
+}

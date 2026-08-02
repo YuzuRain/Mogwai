@@ -2,7 +2,11 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "rootDir": ".",
-    "types": ["node"]
+    "types": ["node"],
+    // NestJS 装饰器。注意:运行时走 tsx/vitest(esbuild),不产出装饰器元数据,
+    // 因此依赖注入一律显式 @Inject(token),不依赖构造函数类型反射。
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": false
   },
   "include": ["src", "test", "drizzle.config.ts"]
 }

@@ -26,8 +26,35 @@ export const users = pgTable("users", {
   pledgeLimitCp: bigint("pledge_limit_cp", { mode: "bigint" })
     .notNull()
     .default(sql`0`),
+  // better-auth user 模型要求的字段(users 即 better-auth 的 user 表,adapter 映射)
+  name: text("name").notNull().default(""),
+  emailVerified: boolean("email_verified").notNull().default(false),
+  image: text("image"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * 平台 token(gateway 数据面凭证,B4.1)。自研签发:网关只认 sha256 投影
+ * (proj:token:<sha256>),依赖 better-auth api-key 插件的内部哈希格式反而引入
+ * 脆弱耦合。明文不落库,只存 sha256 与展示前缀;吊销置 revoked_at,行保留审计。
+ */
+export const platformTokens = pgTable(
+  "platform_tokens",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id),
+    /** sha256(完整 token) 的 hex,与 token 投影键一致(shared projections/token.ts)。 */
+    tokenHash: text("token_hash").notNull().unique(),
+    /** 展示用前缀(如 mgw_a1b2c3d4),不可逆推。 */
+    tokenPrefix: text("token_prefix").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  },
+  (t) => [index("platform_tokens_user_idx").on(t.userId)],
+);
 
 export const providerKeys = pgTable(
   "provider_keys",
