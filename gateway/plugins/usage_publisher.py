@@ -93,7 +93,11 @@ class UsagePublisher(CustomLogger):
                 "would poison log/trace correlation"
             )
 
-        usage = getattr(response_obj, "usage", None)
+        # 流式:litellm 在流结束后才触发 success 回调,聚合后的完整响应放在
+        # kwargs["complete_streaming_response"](response_obj 只是末尾 chunk)。
+        # 两个已知位置的确定性取值,与 metadata 的处理同一纪律,不是猜测式兜底。
+        response = kwargs.get("complete_streaming_response") or response_obj
+        usage = getattr(response, "usage", None)
         estimated = False
         if usage is not None:
             input_tokens = usage.prompt_tokens or 0

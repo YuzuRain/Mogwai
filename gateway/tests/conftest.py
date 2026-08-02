@@ -13,6 +13,7 @@ u_blocked_tok   token carries the rejection flag             -> 403
 u_fee_blocked   billing verdict blocked in authz projection  -> 402
 u_creditor      has outstanding credits (debt routing = M4)  -> loud failure
 u_nokey         valid token, nothing hosted                  -> 400
+u_ratelimited   token projection carries rpm=1               -> 429 on burst
 ==============  =============================================================
 """
 
@@ -39,6 +40,7 @@ TOKENS = {
     "u_fee_blocked": "sk_test_fee_blocked_token",
     "u_creditor": "sk_test_creditor_token",
     "u_nokey": "sk_test_nokey_token",
+    "u_ratelimited": "sk_test_ratelimited_token",
 }
 
 # What the fake provider must receive after envelope decryption:
@@ -46,6 +48,7 @@ PROVIDER_KEYS = {
     ("u_ok", "openai"): "sk-fake-openai-OK1",
     ("u_ok", "anthropic"): "sk-fake-anthropic-OK2",
     ("u_creditor", "openai"): "sk-fake-openai-CRED",
+    ("u_ratelimited", "openai"): "sk-fake-openai-RATE",
 }
 
 
@@ -84,14 +87,14 @@ def seeded_gateway(redis_client: redis_lib.Redis):
     # token projections
     for user_id, token in TOKENS.items():
         token_hash = hashlib.sha256(token.encode()).hexdigest()
-        redis_client.hset(
-            f"proj:token:{token_hash}",
-            mapping={
-                "user_id": user_id,
-                "privacy_mode": "0",
-                "blocked": "1" if user_id == "u_blocked_tok" else "0",
-            },
-        )
+        mapping = {
+            "user_id": user_id,
+            "privacy_mode": "0",
+            "blocked": "1" if user_id == "u_blocked_tok" else "0",
+        }
+        if user_id == "u_ratelimited":
+            mapping["rpm"] = "1"  # shared projections/token.ts 可选字段
+        redis_client.hset(f"proj:token:{token_hash}", mapping=mapping)
 
     # key-routing projections
     redis_client.set(
@@ -103,7 +106,8 @@ def seeded_gateway(redis_client: redis_lib.Redis):
                     "pk_ok_anthropic",
                     "anthropic",
                     PROVIDER_KEYS[("u_ok", "anthropic")],
-                    ["claude-3-haiku"],
+                    # 第二个名字给流式用例专用:回调异步落流,靠专属模型名隔离事件
+                    ["claude-3-haiku", "claude-3-haiku-stream"],
                 ),
             ]
         ),
@@ -112,6 +116,12 @@ def seeded_gateway(redis_client: redis_lib.Redis):
         "proj:keys:u_creditor",
         json.dumps(
             [_key_entry("pk_cred", "openai", PROVIDER_KEYS[("u_creditor", "openai")], [])]
+        ),
+    )
+    redis_client.set(
+        "proj:keys:u_ratelimited",
+        json.dumps(
+            [_key_entry("pk_rate", "openai", PROVIDER_KEYS[("u_ratelimited", "openai")], [])]
         ),
     )
 
@@ -184,3 +194,19 @@ def anthropic_messages(token: str, model: str) -> httpx.Response:
         },
         timeout=30,
     )
+
+
+def stream_sse_lines(path: str, token: str, payload: dict) -> tuple[int, list[str]]:
+    """POST 一个流式请求,返回 (status_code, 非空 SSE 行列表)。"""
+    lines: list[str] = []
+    with httpx.stream(
+        "POST",
+        f"{GATEWAY_URL}{path}",
+        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
+        json=payload,
+        timeout=30,
+    ) as resp:
+        status = resp.status_code
+        if status == 200:
+            lines = [line for line in resp.iter_lines() if line]
+    return status, lines

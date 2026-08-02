@@ -220,3 +220,14 @@
 - **REVIEW**:Block 14 按「继续推进」指示视为追认(✅);新增 Block 15 欠费熔断阈值(M1 暂不熔断,推荐随 M4 支付通道定)
 - 9 集成测试真实 PG+Redis+完整 Nest 应用+真跑消费者:金额与公式一致(313 CP 用例)、幂等重放、零 token 不记账、DLQ 三类、投影刷新、positions 与账本对账、分页游标走全、401;全仓 48 TS + 8 引擎测试全过
 **引用**: packages/formula-engine/ · apps/core-app/src/modules/billing/ + src/worker.ts · docs/tech-design.md §3.2 · docs/REVIEW.md Block 14/15 · journal/TODO.md M1
+
+## 2026-08-03 · gateway 流式(SSE)用例 + rpm/tpm 限流接线(数据面两个审计项清零)
+
+**目的**: 清掉 2026-07-28 审计留下的两个 gateway 自身欠账——coding agent 主流量是流式,权威数据面此前对流式零覆盖(TODO gateway 两项)
+**改动**:
+- **流式测试揭出真 bug**:OpenAI 兼容路由上,客户端不带 `stream_options.include_usage` 时,litellm 丢弃上游流尾回报的 usage chunk、用自身 tokenizer 重算(实测 42→9),且**不带 estimated 标记**——流式主流量的账会全部静默变成估算值。修法:litellm_params 层对全部 OpenAI 兼容上游(openai/deepseek/qwen/volcengine)强制 `stream_options.include_usage`,生产/测试两份配置同步,README 固化「新增 provider 必带」;anthropic 免疫(usage 在 message_start/message_delta 内)
+- usage_publisher 补流式聚合响应读取:`kwargs["complete_streaming_response"] or response_obj` 的确定性取值(与 metadata 合并同一纪律)
+- fake_provider 补双协议 SSE(流尾恒定回报 42/7,计费断言锚点);流式用例断言增量透传(多块到达、拼接等于全文)+ 流尾事件 token 取 provider 权威值 + Key 注入生效;anthropic 白名单加流式专属模型名做事件隔离
+- **rpm/tpm 限流接线**(architecture A3 #3):platform_auth 读 token 投影可选 rpm/tpm 字段 → UserAPIKeyAuth rpm_limit/tpm_limit → litellm 内置限流器(超限 429);值损坏(非数字)响亮 500,静默忽略等于悄悄放开限流;新 persona u_ratelimited(rpm=1)连发 3 次必见 429(跨分钟窗口也稳定)+ 限流不串台用例
+- 测试 13 → 18 个,全过;gateway/README 已知边界更新(流式/限流两条自欠项移除)
+**引用**: gateway/plugins/platform_auth.py + usage_publisher.py · gateway/litellm-config.yaml · gateway/tests/ · journal/TODO.md M1

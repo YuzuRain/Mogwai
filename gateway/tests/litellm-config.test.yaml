@@ -8,11 +8,18 @@ model_list:
       model: openai/*
       api_base: http://fake-provider:8080/v1
       api_key: "placeholder-injected-per-request-by-key-resolver"
+      # 强制向上游索要流式 usage:客户端不带 stream_options 时,litellm 会
+      # 丢弃上游 usage chunk 并用自己的 tokenizer 重算(实测 42→9 且不带
+      # estimated 标记)——计费权威必须是 provider 回报值,不依赖客户端配合
+      stream_options:
+        include_usage: true
   - model_name: anthropic/*
     litellm_params:
       model: anthropic/*
       api_base: http://fake-provider:8080
       api_key: "placeholder-injected-per-request-by-key-resolver"
+      # anthropic 无 stream_options 参数;usage 在 message_start/message_delta
+      # 事件内,litellm 必然解析,无需强制
 
 general_settings:
   custom_auth: plugins.platform_auth.user_api_key_auth

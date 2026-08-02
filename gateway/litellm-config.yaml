@@ -10,11 +10,17 @@
 # 注意:qwen 走 LiteLLM 的 dashscope 适配、火山方舟走 volcengine 适配——
 # 对外前缀与适配层的映射关系见 gateway/README.md,真实 Key 冒烟验证前视为未确认。
 
+# stream_options.include_usage:对 OpenAI 兼容上游强制索要流式 usage——
+# 客户端不带该参数时 litellm 会丢弃上游 usage chunk 并用自身 tokenizer 重算
+# (集成测试实测),计费权威必须是 provider 回报值,不依赖客户端配合;
+# anthropic 无此参数(usage 在 message_start/message_delta 内,必然解析)。
 model_list:
   - model_name: openai/*
     litellm_params:
       model: openai/*
       api_key: "placeholder-injected-per-request-by-key-resolver"
+      stream_options:
+        include_usage: true
   - model_name: anthropic/*
     litellm_params:
       model: anthropic/*
@@ -23,14 +29,20 @@ model_list:
     litellm_params:
       model: deepseek/*
       api_key: "placeholder-injected-per-request-by-key-resolver"
+      stream_options:
+        include_usage: true
   - model_name: qwen/*
     litellm_params:
       model: dashscope/*
       api_key: "placeholder-injected-per-request-by-key-resolver"
+      stream_options:
+        include_usage: true
   - model_name: volcengine/*
     litellm_params:
       model: volcengine/*
       api_key: "placeholder-injected-per-request-by-key-resolver"
+      stream_options:
+        include_usage: true
 
 general_settings:
   # 平台 token 鉴权 + 软授权预检(tech-design §2.5)

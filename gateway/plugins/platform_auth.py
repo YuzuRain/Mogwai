@@ -60,8 +60,27 @@ async def user_api_key_auth(request: Request, api_key: str) -> UserAPIKeyAuth:
             detail="account blocked by billing (outstanding service fees)",
         )
 
+    # rpm/tpm 限流参数(architecture A3 #3):投影可选字段,存在即接到
+    # litellm 内置限流器(超限 429);缺省不设 = 走 litellm 全局默认。
+    # 值损坏(非数字)同样响亮失败——静默忽略等于悄悄放开限流。
+    limits: dict[str, int] = {}
+    for field in ("rpm", "tpm"):
+        raw = projection.get(field)
+        if raw is not None:
+            try:
+                limits[f"{field}_limit"] = int(raw)
+            except ValueError as exc:
+                raise HTTPException(
+                    status_code=500,
+                    detail=(
+                        f"token projection for hash={token_hash[:12]}… is corrupt: "
+                        f"{field}={raw!r} is not an integer"
+                    ),
+                ) from exc
+
     return UserAPIKeyAuth(
         api_key=api_key,
         user_id=user_id,
         metadata={"privacy_mode": privacy_mode},
+        **limits,
     )

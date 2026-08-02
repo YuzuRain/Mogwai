@@ -105,9 +105,11 @@ gateway/tests/run.sh   # 一键:构建 → 起真实 Redis + 测试替身上游 
 - 全部断言打**真实依赖**(no-mocks 规则):真实 Redis、真实 LiteLLM 容器;
   唯一替身是 `tests/fake_provider/`(付费 LLM API 的测试替身,规则允许的豁免),
   它把收到的鉴权头写回 Redis,使「Key 确实被解密注入」可以逐字节断言;
-- 13 个用例覆盖 M1 验收:401/403/402 鉴权矩阵、BYOK 解密注入、模型白名单、
+- 18 个用例覆盖 M1 验收:401/403/402 鉴权矩阵、BYOK 解密注入、模型白名单、
   裸模型名拒绝、债务路由响亮失败、双协议(含 `/v1/messages` 回调的 provider
-  归因)、成功/失败两路 usage 事件按契约工件校验、spool 落盘与补投;
+  归因)、成功/失败两路 usage 事件按契约工件校验、**流式双协议**(增量透传 +
+  流尾 usage 事件取 provider 回报值)、rpm 限流(投影字段 → 429)、
+  spool 落盘与补投、跨语言 KMS 向量;
 - `tests/litellm-config.test.yaml` 与生产配置的唯一差异是 api_base 指向替身,
   插件与鉴权设置一致。
 
@@ -136,8 +138,13 @@ gateway/tests/run.sh   # 一键:构建 → 起真实 Redis + 测试替身上游 
 
 gateway 自身欠的(不被其他模块阻塞,journal/TODO.md M1):
 
-- **流式(SSE)无测试覆盖**:13 个用例全部非流式,而 coding agent 主流量是流式;
-- **rpm/tpm 限流未接线**:token 投影 schema 已有字段,platform_auth 未读取;
 - **qwen→dashscope、火山方舟→volcengine 的适配映射未经真实 Key 冒烟**
   (测试替身只覆盖 OpenAI/Anthropic 两种 wire format);拿到真实 Key 后需
   人工冒烟,不进 CI。
+
+流式计费的一个关键设定(2026-08-03,集成测试实测得出):OpenAI 兼容上游必须
+在 `litellm_params` 里强制 `stream_options.include_usage`——客户端不带该参数
+时,litellm 会丢弃上游流尾的 usage chunk 并用自己的 tokenizer 重算(且不带
+`estimated` 标记),计费就悄悄变成了估算值。两份配置(生产/测试)已同步设置,
+**新增 OpenAI 兼容 provider 时必须带上此参数**;anthropic 无此参数
+(usage 在 `message_start`/`message_delta` 事件内,litellm 必然解析)。
