@@ -192,3 +192,31 @@
 - admin 端点鉴权(admin 角色)依赖 better-auth admin 插件,随 account 实现落地(TODO 已立项)
 - 全量 34 测试过(shared 23 含新 8 个 API 契约用例;core-app 11 打真实 Postgres)
 **引用**: docs/architecture.md B4.1 · packages/shared/src/api/ + src/domain/ · apps/core-app/src/modules/ · journal/TODO.md M1
+
+## 2026-08-02 · core-app NestJS 骨架 + account 模块(gateway 投影自此有生产写入方)
+
+**目的**: M1 关键路径——按 B4.1 契约实现管理面骨架与 account 模块,解除 gateway「生产不可用」(TODO core-app 实现项)
+**改动**:
+- **NestJS 骨架**(apps/core-app/src):db/redis 全局 provider、错误信封 ExceptionFilter(code 只出 shared 注册表)、zod 入参管道(422 带 issues)+ **出参过契约 schema**(toDto,服务端违约当场 500);运行时走 tsx/esbuild 无装饰器元数据,DI 一律显式 @Inject(tsconfig 有注释)
+- **better-auth 集成**:users 表即 user 模型(补 name/email_verified/image/updated_at 四列),会话/凭证在 auth_ 前缀托管表(业务代码禁读写);挂载在 /api/auth/*,须先于 json body parser;**坑**:better-call node 适配器自行还原 express 前缀剥离(读 baseUrl/originalUrl),手动改写 req.url 会把路径拼坏(已注释在 app.ts)
+- **平台 token 自研签发**(B1 原「api-key 插件」备注更正,新表 platform_tokens):明文只出签发响应一次,sha256 落库;投影一致性纪律成文并实现——收紧先投影后 DB、放开先 DB 后投影,两个方向失败都 fail-closed(projections.service.ts 头注释)
+- **Key 托管全链路**:TS 信封加密(envelope.ts,线格式与 gateway kms.py 逐字节一致)、录入即异步探测(§2.1,401/403→invalid,网络故障→停留 pending_verify 由启动扫描重试,绝不把基建故障误判成 Key 无效)、active 才进路由投影
+- **跨语言加密互通锁死**:TS 加密侧生成向量(scripts/gen-kms-vector.ts)→ gateway 测试套件 Python 解密校验(tests/test_kms_vector.py),gateway 14 测试全过
+- 迁移 0002(users 增列 + platform_tokens + auth_ 三表);B3/B1/README/gateway README 已知边界同步
+- 11 集成测试:真实 Postgres + Redis + 完整 Nest 应用 + better-auth 全链路,投影内容逐字段过 shared schema,信封密文解密还原明文;全仓 45 TS 测试 + gateway 14 py 测试全过
+- TODO 新增:workers Key 巡检(6h)、billing blocked 标记与投影自愈的对齐约束
+**引用**: apps/core-app/ · infra/migrations/0002 · gateway/tests/test_kms_vector.py · docs/architecture.md B1/B3 · journal/TODO.md M1
+
+## 2026-08-02 · billing 消费者 + formula-engine(M1 核心循环后端段贯通)
+
+**目的**: M1 核心循环「调用 → CP 记账可见」的最后一段后端链路:usage.completed → 公式求值 → 复式记账 → 授权投影(TODO billing 消费者项)
+**改动**:
+- **packages/formula-engine**:自研安全表达式引擎(零依赖,~250 行 Pratt 解析器):§3.3 白名单函数 ceil/floor/round/min/max/clamp/if、带点变量名(price.input)、比较与逻辑(1/0 语义);**未知变量/函数/非有限结果一律抛错,绝不默认 0**;§3.3 的「推荐 expr-eval/CEL」按自研落地(表面积小、可审计,B4 契约 evaluateCredit 不变);8 单测含默认公式真实数值回归
+- **price_table 补契约缺口**:§3.2 Layer 1 原无存储位置——并入 config_versions(新 namespace `price_table`,zod schema 进 shared、admin 注册表接线);分录 snapshot 记 price.* + price_table_version,审计重算无歧义;seed v1 七个模型按 2026-07 公开刊例价(上线前复核,TODO 用户参与项)
+- **BillingConsumer**(apps/core-app/src/modules/billing/consumer.ts):Redis Streams 消费组 `billing`(从 0 起建,建组前事件不漏);可靠性三分法——幂等键 23505 → ack、业务性坏事件(schema 违约/无价格/用户不存在/公式产出非法/platform key_source)→ DLQ `billing:dlq:usage.completed` + ack 不中断、基建故障 → 不 ack 回 PEL 重试消费不前进;记账后刷新授权投影(§2.5,debts/credits 空数组待 M4,blocked 恒 false 待 Block 15)
+- **模块边界**:config_versions 归 admin——新增 AdminConfigService 作为模块公开 API,billing 经它读 active 配置(30s 缓存),不直查 admin 表
+- **billing 端点**:GET positions(科目净头寸 + 可用担保额度)、GET ledger(bigserial id keyset 分页,含 formula_version/snapshot 逐笔追溯)
+- **core-worker 入口落地**(B2 同代码不同入口):src/worker.ts 只跑消费者不监听 HTTP,SIGTERM 排空退出;`pnpm --filter @mogwai/core-app worker`,冒烟过(建组/消费/干净退场)
+- **REVIEW**:Block 14 按「继续推进」指示视为追认(✅);新增 Block 15 欠费熔断阈值(M1 暂不熔断,推荐随 M4 支付通道定)
+- 9 集成测试真实 PG+Redis+完整 Nest 应用+真跑消费者:金额与公式一致(313 CP 用例)、幂等重放、零 token 不记账、DLQ 三类、投影刷新、positions 与账本对账、分页游标走全、401;全仓 48 TS + 8 引擎测试全过
+**引用**: packages/formula-engine/ · apps/core-app/src/modules/billing/ + src/worker.ts · docs/tech-design.md §3.2 · docs/REVIEW.md Block 14/15 · journal/TODO.md M1

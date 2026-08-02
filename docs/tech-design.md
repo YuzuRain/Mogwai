@@ -184,6 +184,9 @@ Layer 2  折算公式 Formula(DSL)  —— USD 成本 → CP 的表达式,可配
 Layer 3  策略覆盖 PolicyOverride —— 按用户等级/活动/BYOK 等维度的系数覆盖
 ```
 
+- Layer 1 与 Layer 2 同存配置中心 `config_versions`(namespace 分别为 `price_table` / `credit_formula`,zod schema 在 `packages/shared/src/config/`):官方调价 = 发新版本,分录 snapshot 记录当笔生效的 `price.*` 与 `price_table_version`,审计重算无歧义;价格键为 `provider/model`(§2.2 对外模型名)。**遇到价格表没有的模型,billing 不猜价:事件进 DLQ(`billing:dlq:usage.completed`)等补价后重放**;
+- Layer 3 的用户维度覆盖随 M2+ 用户分层落地,M1 由规则 `variables` 里的 `tier_discount = 1` 占位。
+
 ### 3.3 公式 DSL
 
 采用安全表达式引擎(推荐 [expr-eval](https://github.com/silentmatt/expr-eval) / [CEL](https://github.com/google/cel-spec),禁止任意代码执行),内置变量与函数:

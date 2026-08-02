@@ -185,7 +185,7 @@ mogwai/
 │   ├── core-app/                   # 模块化单体(NestJS)
 │   │   └── src/
 │   │       ├── modules/
-│   │       │   ├── account/        #   用户与会话(better-auth)、平台 token 签发(api-key 插件)、
+│   │       │   ├── account/        #   用户与会话(better-auth)、平台 token 签发(自研,sha256 落库)、
 │   │       │   │                   #   Provider Key 托管(录入/校验/状态机/Redis 投影×2)
 │   │       │   ├── billing/        #   ├─ formula/   折算公式版本管理 + 沙箱回放
 │   │       │   │                   #   ├─ ledger/    复式账本(冻结/结算/幂等)
@@ -239,9 +239,17 @@ mogwai/
 
 ```sql
 -- 账户与 Key(users 内置 PLATFORM 哨兵行,账本双录的平台侧对手方,§3.5)
+-- users 同时是 better-auth 的 user 模型(name/email_verified/image/updated_at 四列随之),
+-- 会话/凭证/验证码在 better-auth 托管表 auth_sessions / auth_accounts / auth_verifications,
+-- 业务代码禁止直接读写(apps/core-app account/auth-schema.ts)
 users(id, email UNIQUE, tier, privacy_mode,
       pledge_limit_cp BIGINT,                                   -- 用户自设的对战担保额度上限
+      name, email_verified, image, updated_at,                  -- better-auth user 模型字段
       created_at)
+platform_tokens(id, user_id,                                    -- 数据面凭证(B4.1);自研签发,
+                token_hash UNIQUE,                              -- sha256(token) hex,与 token 投影键一致
+                token_prefix,                                   -- 展示前缀,明文不落库
+                created_at, revoked_at)                         -- 吊销置位,行保留审计
 provider_keys(id, user_id, provider,
               encrypted_dek, ciphertext, nonce,                 -- 信封加密三件套,与 Key 路由投影同构(shared key-routing.ts)
               model_whitelist jsonb, status, last_verified_at, created_at)
@@ -256,7 +264,7 @@ ledger_entries(id, txn_id,                                      -- 一个经济�
 -- 约束(迁移内置):每 txn Σdelta_cp = 0(延迟约束触发器)+ 禁 UPDATE/DELETE 触发器
 
 -- 配置中心(公式/权重/概率共用;credit_formula 并入此表,REVIEW Block 14)
-config_versions(id, namespace,                                  -- credit_formula|ev_weights|gacha_rates|battle_params
+config_versions(id, namespace,                                  -- credit_formula|price_table|ev_weights|gacha_rates|battle_params
                 version, UNIQUE(namespace, version),
                 payload jsonb, status,                          -- draft|gray|active|retired
                 gray_ratio, effective_at, created_by,
