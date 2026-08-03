@@ -18,6 +18,10 @@ export function createAuth(db: Db) {
   return betterAuth({
     baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
     basePath: "/api/auth",
+    // web 经 Next 反代同源调用(architecture B4.1),但浏览器 Origin 头仍是
+    // web 自己的地址——better-auth 按 Origin 校验 CSRF,须显式信任 web 源;
+    // 生产以 MOGWAI_WEB_ORIGIN 注入,缺省仅本地开发端口。
+    trustedOrigins: [process.env.MOGWAI_WEB_ORIGIN ?? "http://localhost:3100"],
     secret: secret ?? "mogwai-dev-only-secret",
     database: drizzleAdapter(db, {
       provider: "pg",
