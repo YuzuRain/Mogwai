@@ -95,11 +95,13 @@ pnpm --filter @mogwai/core-app db:migrate   # 数据库迁移(infra/migrations,d
 pnpm --filter @mogwai/core-app db:seed      # 配置中心初始参数(credit_formula v1 + price_table v1)
 pnpm --filter @mogwai/core-app dev          # core-app(NestJS,:3000;管理面 API 见 architecture B4.1)
 pnpm --filter @mogwai/core-app worker       # core-worker(billing 消费者:usage.completed → 账本)
+pnpm --filter @mogwai/web dev               # web 控制台(Next.js,:3100;/api 反代到 core-app)
 ```
 
 core-app 主要环境变量(均有本地默认值):`DATABASE_URL`、`MOGWAI_REDIS_URL`、
 `MOGWAI_KMS_BACKEND`/`MOGWAI_DEV_KEK`(与 gateway 同一把,infra compose 注释)、
-`BETTER_AUTH_SECRET`(生产必填)。
+`BETTER_AUTH_SECRET`(生产必填)、`MOGWAI_WEB_ORIGIN`(web 部署源,better-auth CSRF 信任)。
+web 环境变量:`CORE_APP_URL`(反代目标)、`NEXT_PUBLIC_GATEWAY_URL`(接入指南里的网关地址)。
 
 事件与投影的权威契约在 `packages/shared`(zod);变更契约必须重新导出 JSON Schema 并同步设计文档(architecture A5)。LLM 网关(LiteLLM + 三插件)的设计与运行说明见 [gateway/README.md](gateway/README.md)。
 

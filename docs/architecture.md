@@ -205,11 +205,12 @@ mogwai/
 │   │       │   └── admin/          #   配置中心 CRUD、灰度、审计日志
 │   │       └── workers/            #   Streams 消费者 + BullMQ 任务:EV 日结+日报、Key 巡检、结算补偿
 │   │
-│   └── web/                        # Next.js:页面对齐产品「功能地图」五页面
-│       └── src/app/
-│           ├── (console)/          #   Key 管理、账单(逐笔折算追溯)、用量报表
-│           └── (game)/             #   训练师主页 / 抽卡&技能仓库 /
-│                                   #   对战大厅(演出播放器+回放+复盘页)/ EV 日报
+│   └── web/                        # Next.js(:3100,/api 反代到 core-app 保持同源,见 B4.1)
+│       └── src/
+│           ├── app/console/        #   M1 已落地:概览 / 接入指南 / token / Key / 账单(逐笔追溯)/ 设置
+│           ├── app/(game)/         #   M2+:训练师主页 / 抽卡&技能仓库 /
+│           │                       #   对战大厅(演出播放器+回放+复盘页)/ EV 日报
+│           └── lib/                #   api.ts(shared zod 校验响应)、snippets.ts(接入片段生成,纯函数)
 │
 ├── packages/
 │   ├── shared/                     # 事件 schema(zod,含 JSON Schema 导出)、DTO、错误码
@@ -318,6 +319,11 @@ export function evaluateCredit(
 **管理面**是 core-app 的 `/api/v1/*`(better-auth session cookie,控制台是唯一调用方;
 M1 不对第三方开放管理 API)。auth 本身(注册/登录/session)由 better-auth 托管在
 `/api/auth/*`,不重复设计。
+
+**同源约定**:web 只调相对路径 `/api/*`,由 Next rewrites(本地)/前置 LB(生产)反代到
+core-app——session cookie 天然同源,无 CORS 面。浏览器 Origin 头仍是 web 自身地址,
+better-auth 按 Origin 做 CSRF 校验,core-app 须以 `MOGWAI_WEB_ORIGIN` 显式信任 web 部署源
+(缺省 `http://localhost:3100`,auth.module.ts)。
 
 **通用约定**
 

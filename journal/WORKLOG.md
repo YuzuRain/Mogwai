@@ -231,3 +231,14 @@
 - **rpm/tpm 限流接线**(architecture A3 #3):platform_auth 读 token 投影可选 rpm/tpm 字段 → UserAPIKeyAuth rpm_limit/tpm_limit → litellm 内置限流器(超限 429);值损坏(非数字)响亮 500,静默忽略等于悄悄放开限流;新 persona u_ratelimited(rpm=1)连发 3 次必见 429(跨分钟窗口也稳定)+ 限流不串台用例
 - 测试 13 → 18 个,全过;gateway/README 已知边界更新(流式/限流两条自欠项移除)
 **引用**: gateway/plugins/platform_auth.py + usage_publisher.py · gateway/litellm-config.yaml · gateway/tests/ · journal/TODO.md M1
+
+## 2026-08-03 · web 控制台(M1 管理面闭环)
+**目的**: M1 最后一块开发面主项——控制台,让「调用 → CP 记账可见」对用户闭合
+**改动**:
+- 新增 `apps/web`(Next.js 16 App Router + Tailwind 4,:3100):登录注册(better-auth REST)、概览(接入三步清单)、接入指南、平台 token(明文仅签发一次展示)、Key 托管(录入即探测,pending 短轮询到终态)、账单(positions + ledger cursor 分页 + snapshot 逐笔追溯展开)、设置(privacy_mode)
+- 同源约定落地:web 只调相对路径 `/api/*`,Next rewrites 反代到 core-app(生产由前置 LB 做同样路由),session cookie 无 CORS 面;架构文档 B4.1 补记
+- 接入指南片段生成为纯函数 `src/lib/snippets.ts`(5 工具:Claude Code / Codex CLI / Cline / Cursor / Trae;Claude Code 不带 /v1、OpenAI 兼容带 /v1、模型名强制 provider/model),4 单测锁行为
+- 契约纪律延伸到浏览器端:API client 对所有响应过 shared zod schema,错误走统一信封解析为结构化 ApiError
+- **修 core-app 真 bug**:better-auth 在反代场景按 Origin 做 CSRF 校验,Origin 是 web 源(:3100)而非 auth 服务源,未信任则所有 auth 请求 403 "Invalid origin";auth.module.ts 增加 trustedOrigins(生产以 MOGWAI_WEB_ORIGIN 注入)
+- 浏览器端到端冒烟通过:注册 → 签发 token → 指南片段注入 token → 假 Key 录入自动流转「校验中→无效」(真实探测 OpenAI 401)→ 隐私模式切换 → 真实 usage 事件经 worker 记账(gpt-5 1M+0.5M tokens → $6.25 × 5% × 1000 = 313 CP,双录平衡)→ 账单页追溯展开 snapshot(expression/variables/price_table_version 完整);途中 DLQ 两次正确拦截坏事件(unknown_user / schema_violation),验证消费者防线真实有效
+**引用**: apps/web · apps/core-app/src/auth/auth.module.ts · docs/architecture.md B1/B4.1 · README.md
