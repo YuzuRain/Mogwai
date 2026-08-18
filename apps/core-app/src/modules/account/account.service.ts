@@ -1,7 +1,7 @@
 import { randomBytes, createHash } from "node:crypto";
 
 import { Inject, Injectable, Logger, type OnApplicationBootstrap } from "@nestjs/common";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNull } from "drizzle-orm";
 
 import { keyRoutingProjectionKey, keyRoutingProjectionSchema, type Provider } from "@mogwai/shared";
 import type { Redis } from "ioredis";
@@ -183,7 +183,11 @@ export class AccountService implements OnApplicationBootstrap {
       .where(eq(providerKeys.id, row.id));
   }
 
-  /** 探测并推进状态机:ok → active + 投影;unauthorized → invalid;unreachable → 原地等待重试。 */
+  /**
+   * 探测并推进状态机:ok → active + 投影;unauthorized → invalid;
+   * throttled → throttled(Key 有效但被限流,不进路由,巡检负责捞回);
+   * unreachable → 原地等待重试。
+   */
   async verifyKey(keyId: string): Promise<void> {
     const [row] = await this.db.select().from(providerKeys).where(eq(providerKeys.id, keyId));
     if (!row || row.status !== "pending_verify") return;
@@ -202,8 +206,74 @@ export class AccountService implements OnApplicationBootstrap {
       await this.projections.rebuildKeyRouting(row.userId);
     } else if (result === "unauthorized") {
       await this.db.update(providerKeys).set({ status: "invalid" }).where(eq(providerKeys.id, keyId));
+    } else if (result === "throttled") {
+      await this.db.update(providerKeys).set({ status: "throttled" }).where(eq(providerKeys.id, keyId));
     }
     // unreachable:保持 pending_verify,key-verifier 已留 ERROR 日志
+  }
+
+  /**
+   * 健康巡检(tech-design §2.1,workers 每 6h 调度):重探 active/throttled Key,
+   * 顺带扫掉滞留 pending_verify 的(录入探测遇基建故障后无人重试的兜底)。
+   * 状态流转即时同步路由投影(throttled/invalid 不得继续接流量);
+   * 失效通知:M1 无通知通道,ERROR 日志即告警面,状态在控制台可见。
+   */
+  async patrolKeys(): Promise<{ probed: number; activated: number; throttled: number; invalidated: number }> {
+    const summary = { probed: 0, activated: 0, throttled: 0, invalidated: 0 };
+    const rows = await this.db
+      .select()
+      .from(providerKeys)
+      .where(inArray(providerKeys.status, ["active", "throttled", "pending_verify"]));
+
+    const dirtyUsers = new Set<string>();
+    for (const row of rows) {
+      if (row.status === "pending_verify") {
+        await this.verifyKey(row.id);
+        summary.probed += 1;
+        continue;
+      }
+      const plaintext = envelopeDecrypt({
+        nonce: row.nonce,
+        ciphertext: row.ciphertext,
+        encryptedDek: row.encryptedDek,
+      });
+      const result = await probeProviderKey(row.provider as Provider, plaintext);
+      summary.probed += 1;
+
+      if (result === "ok") {
+        await this.db
+          .update(providerKeys)
+          .set({ status: "active", lastVerifiedAt: new Date() })
+          .where(eq(providerKeys.id, row.id));
+        if (row.status === "throttled") {
+          summary.activated += 1;
+          dirtyUsers.add(row.userId);
+        }
+      } else if (result === "unauthorized") {
+        await this.db.update(providerKeys).set({ status: "invalid" }).where(eq(providerKeys.id, row.id));
+        summary.invalidated += 1;
+        dirtyUsers.add(row.userId);
+        this.logger.error(
+          `patrol: key ${row.id} (${row.provider}, user ${row.userId}) turned invalid — removed from routing`,
+        );
+      } else if (result === "throttled") {
+        if (row.status === "active") {
+          await this.db
+            .update(providerKeys)
+            .set({ status: "throttled" })
+            .where(eq(providerKeys.id, row.id));
+          summary.throttled += 1;
+          dirtyUsers.add(row.userId);
+          this.logger.warn(`patrol: key ${row.id} (${row.provider}) throttled by provider — paused routing`);
+        }
+      }
+      // unreachable:探测基建故障,状态不动,key-verifier 已留 ERROR
+    }
+
+    for (const userId of dirtyUsers) {
+      await this.projections.rebuildKeyRouting(userId);
+    }
+    return summary;
   }
 
   private async ownedKey(userId: string, keyId: string) {

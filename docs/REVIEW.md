@@ -282,6 +282,24 @@ tech-design §3.4(原稿)给了独立的 `credit_formula` 表(scope 每行独立
 
 ---
 
+## Block 16 · 每日对账的第二数据源:LiteLLM spend log 要不要落库(2026-08-18 对账任务落地时新增)
+
+**问题**
+
+tech-design §2.3 写的对账是「LiteLLM spend log ↔ ledger」,能抓到**网关侧丢事件**(usage_publisher 崩溃且 spool 也丢)的场景。但 LiteLLM 记 spend log 需要配 `DATABASE_URL`——这与 A4「网关不触 PG」冲突(即便是独立库,也给网关引入 PG 依赖与迁移面)。M1 已落地的对账是 **stream ↔ ledger 自对账**(能抓消费侧漏账,抓不到发布侧丢失;发布侧已有 spool + AOF 双保险)。
+
+**候选方案**
+
+1. **M2 用 Langfuse trace 做第二数据源**(推荐):Langfuse 本来就随 M2 telemetry 上,trace 含 token 用量,对账任务加一路比对即可,零新增组件。代价:Langfuse 是观测通道,自身有采样/丢失容忍,当第二数据源灵敏度略差。
+2. 给 LiteLLM 配独立 Postgres 库(gateway 自有,不碰业务库):数据最全,但网关多一个有状态依赖,与「无状态水平扩」部署形态相抵。
+3. usage_publisher 双写本地请求日志文件,对账任务拉取:自研面最大,不推荐。
+
+**推荐**:方案 1,M2 telemetry 落地时实施;在此之前发布侧依赖 spool + Redis AOF 的既有双保险。
+**评审结论**:⬜ 待裁定
+**意见**:_(待填)_
+
+---
+
 ## 汇总表(review 完后勾选)
 
 | Block | 主题 | 结论 |
@@ -302,4 +320,4 @@ tech-design §3.4(原稿)给了独立的 `credit_formula` 表(scope 每行独立
 | 14 | 公式存储位置 | ✅ 并入 config_versions(2026-08-02 按继续推进指示视为追认) |
 | 15 | 欠费熔断阈值 | ⬜ M1 暂不熔断(blocked 恒 false),阈值待裁定 |
 
-> Block 1–14 已有结论,裁定均已回写正式文档;Block 15 为 billing 消费者开发期新增,待裁定。
+> Block 1–14 已有结论,裁定均已回写正式文档;Block 15(billing 消费者)、Block 16(每日对账数据源)为开发期新增,待裁定。

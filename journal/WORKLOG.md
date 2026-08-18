@@ -242,3 +242,16 @@
 - **修 core-app 真 bug**:better-auth 在反代场景按 Origin 做 CSRF 校验,Origin 是 web 源(:3100)而非 auth 服务源,未信任则所有 auth 请求 403 "Invalid origin";auth.module.ts 增加 trustedOrigins(生产以 MOGWAI_WEB_ORIGIN 注入)
 - 浏览器端到端冒烟通过:注册 → 签发 token → 指南片段注入 token → 假 Key 录入自动流转「校验中→无效」(真实探测 OpenAI 401)→ 隐私模式切换 → 真实 usage 事件经 worker 记账(gpt-5 1M+0.5M tokens → $6.25 × 5% × 1000 = 313 CP,双录平衡)→ 账单页追溯展开 snapshot(expression/variables/price_table_version 完整);途中 DLQ 两次正确拦截坏事件(unknown_user / schema_violation),验证消费者防线真实有效
 **引用**: apps/web · apps/core-app/src/auth/auth.module.ts · docs/architecture.md B1/B4.1 · README.md
+
+## 2026-08-18 · 运维三件套:Key 巡检、每日对账、DLQ 工具(M1 收尾)
+**目的**: 关掉 M1 剩余的运维性待办,让账本可靠性从「设计上成立」变成「有任务在守」
+**改动**:
+- workers 模块落地(`modules/workers/ops.scheduler.ts`,BullMQ,architecture #8):只做调度不碰数据,业务在所属模块公开 API;repeatable job 多副本天然去重;仅 worker 入口启动
+- Key 健康巡检(每 6h,归 account):`patrolKeys()` 重探 active/throttled + 兜底扫 pending_verify;探测新增 429→throttled 语义(key-verifier),active↔throttled↔invalid 全流转即时同步路由投影;通知 = ERROR 日志(M1 无通知通道)
+- 每日对账(03:00,归 billing):`BillingReconciler` stream ↔ ledger 自对账,窗口内事件必须「在账本 ∨ 在 DLQ ∨ 零成本」,漏账走消费者同一 `bill()` 入口幂等补记 + 告警;消费者记账入口重构为公开方法(消费循环/对账单一实现)
+- **修一个隐蔽 bug 面**:对账窗口最初用宿主机 `Date.now()`,colima VM 时钟漂移导致 XRANGE 漏扫——改为 Redis `TIME` 为基准(stream ID 由 Redis 分配,生产 NTP 偏差同理)
+- DLQ 工具:`pnpm --filter @mogwai/core-app dlq list|replay <id>|--all`;重放 = XADD 回流 + LREM 出列;根因未修就重放会回到 DLQ 且原始消息被对账重复入列(无害有噪音),该语义有集成测试固化
+- REVIEW 新增 Block 16:对账第二数据源(LiteLLM spend log 需给网关配 DB,与 A4「网关不触 PG」冲突;推荐 M2 用 Langfuse trace)——tech-design §2.3 已改写为 M1 范围 + 引用
+- 卫生:apps/web/.next 构建产物曾被误提交,已从跟踪移除并补 .gitignore
+- 测试:ops.test.ts 3 用例(巡检全流转/对账补记与幂等/重放闭环),core-app 全量 34/34 过;worker 入口冒烟(调度器起停 + key-patrol 首跳)
+**引用**: apps/core-app(modules/workers、modules/billing/reconciler.ts、scripts/dlq.ts) · docs/tech-design.md §2.3 · docs/REVIEW.md Block 16

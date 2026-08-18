@@ -94,7 +94,8 @@ gateway/tests/run.sh                   # 网关集成测试(一键起真实依�
 pnpm --filter @mogwai/core-app db:migrate   # 数据库迁移(infra/migrations,drizzle-kit)
 pnpm --filter @mogwai/core-app db:seed      # 配置中心初始参数(credit_formula v1 + price_table v1)
 pnpm --filter @mogwai/core-app dev          # core-app(NestJS,:3000;管理面 API 见 architecture B4.1)
-pnpm --filter @mogwai/core-app worker       # core-worker(billing 消费者:usage.completed → 账本)
+pnpm --filter @mogwai/core-app worker       # core-worker(billing 消费者 + BullMQ 定时任务:Key 巡检/每日对账)
+pnpm --filter @mogwai/core-app dlq list     # billing DLQ 巡检(重放:dlq replay <id>|--all)
 pnpm --filter @mogwai/web dev               # web 控制台(Next.js,:3100;/api 反代到 core-app)
 ```
 

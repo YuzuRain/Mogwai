@@ -20,12 +20,13 @@
 - [x] **core-app**:REST API 面设计:端点、错误码、鉴权方式(2026-07-28 完成:architecture B4.1 定稿管理面契约——better-auth session 鉴权、错误信封 + 错误码注册表、cursor 分页、14 个 M1 端点及投影副作用归属;DTO/错误码/枚举 zod 单一权威落 `packages/shared` src/api/ + src/domain/,core-app 表定义改引 shared 枚举消除重复)
 - [x] **core-app**:NestJS 应用骨架 + account 模块实现(better-auth 集成、token 签发/吊销写投影、Key 托管信封加密 + 异步探测校验写投影,按 B4.1 契约)——完成后 gateway 才有真实投影写入方,脱离手工 seed(2026-08-02 完成:`apps/core-app/src`,错误信封/zod 管道/显式 @Inject 注入;平台 token 自研签发含 platform_tokens 表,B1「api-key 插件」备注已更正;TS 信封加密与 gateway kms.py 线格式互通由跨语言向量锁死 `gateway/tests/test_kms_vector.py`;11 集成测试打真实 Postgres+Redis+完整 Nest 应用)
 - [x] **billing**:usage.completed 消费者:公式求值(`packages/formula-engine` 安全 DSL 引擎)→ 复式记账((event_id,seq) 幂等)→ 授权投影刷新;坏事件进 DLQ `billing:dlq:usage.completed` 不中断消费;price_table v1 进 config_versions(新 namespace);positions/ledger 只读端点(keyset 分页);core-worker 入口 `pnpm --filter @mogwai/core-app worker`(2026-08-02 完成:9 集成测试真实 PG+Redis 全链路;M1 核心循环「调用 → CP 记账可见」后端段已通)
-- [ ] **billing**:DLQ 巡检与重放工具——当前 DLQ 只进不出(补价格/补用户后需人工 XADD 重放);随每日对账任务一起落地(tech-design §2.3)
+- [x] **billing**:DLQ 巡检与重放工具(2026-08-18 完成:`scripts/dlq.ts` list/replay,重放 = XADD 回流 + 出列,消费者幂等兜底;注意:根因未修就重放只会回到 DLQ,且原始消息会被下次对账重复入列——无害但有噪音,集成测试已固化该语义)
 - [ ] **billing**:price_table v1 上线前对照各 provider 官方刊例价复核(seed 值按 2026-07 公开价录入,apps/core-app/src/seed/seed-config.ts)——**用户参与项**,与真实 Key 冒烟同批做
 - [ ] **account**:admin 角色机制随 better-auth admin 插件落地(B4.1:admin 端点鉴权依赖它;admin config 三端点尚未实现——读取侧 AdminConfigService 已就位,写入/激活端点等角色机制)
-- [ ] **workers**:Key 健康巡检(每 6h 重探测 active/throttled,失效打标并通知,tech-design §2.1)——M1 已有录入即校验 + 启动扫描 pending_verify,巡检随 workers/BullMQ 落地
+- [x] **workers**:Key 健康巡检(2026-08-18 完成:BullMQ 每 6h,`AccountService.patrolKeys` 归 account 模块所有,workers 只调度;探测新增 429→throttled 语义,active↔throttled↔invalid 全流转 + 路由投影同步;「通知用户」M1 = ERROR 日志 + 控制台状态可见,通知通道随 realtime/M2)
 - [ ] **billing(熔断裁定后)**:blocked 标记接线——REVIEW Block 15 裁定阈值后:授权投影 `blocked` 置位 + token 投影 blocked 标记下发(且 account 的 privacy 同步不得覆盖——当前投影漂移自愈会把 blocked 重置为 "0" 并留 ERROR 日志,projections.service.ts;tech-design §2.5 要求 billing 在账本扫描时重新下发)
-- [ ] **workers**:每日对账 BullMQ 任务:ledger vs LiteLLM 请求日志(tech-design §2.3)
+- [x] **workers**:每日对账 BullMQ 任务,M1 范围 stream ↔ ledger(2026-08-18 完成:`BillingReconciler` 归 billing 模块,26h 窗口/5min 尾部宽限/Redis TIME 为时钟基准;漏账走消费者同一 `bill()` 入口幂等补记 + 告警,DLQ 深度告警)
+- [ ] **billing(Block 16 裁定后)**:对账叠加网关侧独立数据源(抓发布端丢失;推荐 M2 用 Langfuse trace,见 docs/REVIEW.md Block 16)
 
 ## M2+ · 模块设计时再定(不前置拍板)
 

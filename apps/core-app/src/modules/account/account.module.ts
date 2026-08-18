@@ -8,5 +8,6 @@ import { ProjectionsService } from "./projections.service.js";
 @Module({
   controllers: [AccountController],
   providers: [AccountService, ProjectionsService, SessionGuard],
+  exports: [AccountService],
 })
 export class AccountModule {}

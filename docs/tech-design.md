@@ -139,7 +139,7 @@ flowchart LR
 
 - usage_publisher 发布失败时写本地 spool 文件循环重投,Redis 恢复后按 `event_id` 幂等去重;
 - Redis 开启 AOF(everysec);Streams 的 maxlen 裁剪必须确认四个消费组位点均已越过;
-- **每日对账**:BullMQ 任务比对 LiteLLM spend log ↔ ledger,差异生成补记账目并告警(LiteLLM 的 spend 数据仅用于对账,不作权威计费)。
+- **每日对账**(BullMQ 任务,03:00,26h 窗口重叠 2h):M1 范围是 **stream ↔ ledger 自对账**——窗口内每个 usage.completed 必须「在账本 ∨ 在 DLQ ∨ 零成本」,否则视为漏账,走消费者同一记账入口幂等补记并告警;DLQ 深度 > 0 一并告警(重放工具 `pnpm --filter @mogwai/core-app dlq list|replay`)。对账窗口以 Redis 服务器时钟为基准(stream ID 由 Redis 分配,宿主机时钟漂移会漏扫)。**网关侧独立数据源**(抓发布端丢失;候选 LiteLLM spend log / Langfuse trace)待 REVIEW Block 16 裁定后叠加,在此之前发布侧依赖 spool + AOF 双保险。
 
 ### 2.4 实时反馈通道(使用循环的钩子)
 

@@ -141,9 +141,26 @@ export class BillingConsumer {
   /** 返回 true = 已 ack(记账成功 / 幂等重复 / 已进 DLQ);false = 基建故障需重试。 */
   private async processMessage(conn: Redis, messageId: string, fields: string[]): Promise<boolean> {
     try {
-      await this.handleEvent(fields);
+      await this.bill(fields, messageId);
       await conn.xack(STREAM, GROUP, messageId);
       return true;
+    } catch (err) {
+      this.logger.error(
+        `infra error, will retry: ${err instanceof Error ? (err.stack ?? err.message) : err}`,
+      );
+      return false;
+    }
+  }
+
+  /**
+   * 记账入口(消费循环与每日对账补记共用,保证语义单一):
+   * 成账/零成本 → "billed";业务性无法记账 → DLQ + "dlq";
+   * (event_id, seq) 幂等命中 → "duplicate";基建故障原样抛出(调用方决定重试)。
+   */
+  async bill(fields: string[], streamMessageId: string): Promise<"billed" | "dlq" | "duplicate"> {
+    try {
+      await this.handleEvent(fields);
+      return "billed";
     } catch (err) {
       if (err instanceof DlqError) {
         await this.redis.lpush(
@@ -151,24 +168,16 @@ export class BillingConsumer {
           JSON.stringify({
             reason: err.reason,
             message: err.message,
-            stream_message_id: messageId,
+            stream_message_id: streamMessageId,
             fields,
             ts: new Date().toISOString(),
           }),
         );
         this.logger.error(`event → DLQ (${err.reason}): ${err.message}`);
-        await conn.xack(STREAM, GROUP, messageId);
-        return true;
+        return "dlq";
       }
-      if (isPgError(err, "23505")) {
-        // (event_id, seq) 幂等键命中:早已记账,重复投递
-        await conn.xack(STREAM, GROUP, messageId);
-        return true;
-      }
-      this.logger.error(
-        `infra error, will retry: ${err instanceof Error ? (err.stack ?? err.message) : err}`,
-      );
-      return false;
+      if (isPgError(err, "23505")) return "duplicate";
+      throw err;
     }
   }
 

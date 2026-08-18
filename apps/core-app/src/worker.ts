@@ -8,9 +8,11 @@ import { NestFactory } from "@nestjs/core";
 
 import { AppModule } from "./app.module.js";
 import { BillingConsumer } from "./modules/billing/consumer.js";
+import { OpsScheduler } from "./modules/workers/ops.scheduler.js";
 
 const app = await NestFactory.createApplicationContext(AppModule);
 const consumer = app.get(BillingConsumer);
+const ops = app.get(OpsScheduler);
 const consumerName = `${hostname()}-${process.pid}`;
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
@@ -20,7 +22,9 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   });
 }
 
+await ops.start();
 console.log(`core-worker: billing consumer '${consumerName}' starting`);
 await consumer.run(consumerName);
+await ops.stop();
 await app.close();
 console.log("core-worker: stopped");

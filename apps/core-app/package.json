@@ -10,6 +10,7 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:seed": "tsx src/seed/seed-config.ts",
+    "dlq": "tsx scripts/dlq.ts",
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
@@ -20,6 +21,7 @@
     "@nestjs/core": "^11.1.28",
     "@nestjs/platform-express": "^11.1.28",
     "better-auth": "^1.6.25",
+    "bullmq": "^6.1.2",
     "drizzle-orm": "^0.45.1",
     "express": "^5.2.1",
     "ioredis": "^6.0.0",
