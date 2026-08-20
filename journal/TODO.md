@@ -37,6 +37,7 @@
 - [ ] **harness-dsh**:Cordis 插件——路由挂载(网关 baseURL + 平台 token)+ `session/event` 订阅映射;dsh 版本必须 pin(developer preview 无兼容承诺);npm 发布 + `dsh-plugin` topic
 - [ ] **telemetry**:ingest API `POST /api/v1/telemetry/events`(平台 token 鉴权、shared schema 校验、幂等去重、按用户限流)→ 发布 `behavior.tracked`(B4.1 数据上报面)
 - [ ] **game(M2,依赖上面)**:harness 行为特征与网关 usage.completed 的交叉核验管道(锚定规则:同窗口 token 量级 + provider/model 一致,tech-design §4.2 信任边界)
+- [ ] **harness-dsh(M2+,依赖 realtime)**:harness 内实时反馈——EXP 飘字/等级条经 dsh UI slot(`shell.overlay` 等,A6)挂进 harness 界面,消费 §2.4 实时反馈通道;不进首版插件范围
 
 ## M2+ · 模块设计时再定(不前置拍板)
 

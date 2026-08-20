@@ -289,6 +289,7 @@ harness 插件采集点(以 dsh 的 SessionEvent 词汇为首个映射源,harnes
 | `turn.completed` | `turn/start` / `turn/end`(带结束原因) | 会话节奏、轮深、任务完成/中断(HP / 速度) |
 | `tool.called` | `tool/call` / `tool/result`(含 isError) | 工具调用序列与纠错模式(特攻 / 防御) |
 | `request.retried` | `llm/retry` | 失败恢复行为(防御) |
+| `session.forked` | `sessions.fork`(子会话 header 带 `parentSession`) | 重新生成 / 改历史重跑(特防:审慎) |
 | `usage.observed` | `assistant/chunk{type:'usage'}` / `assistant/message.usage` | **交叉核验锚点**:与网关 usage.completed 对量级 |
 | `session.summary` | 会话粒度聚合(时长、深夜、轮数) | 使用习惯(HP) |
 

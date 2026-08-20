@@ -270,3 +270,11 @@
 - REVIEW 新增 Block 17(采集通道:推荐 session/event 自建出站,规避与用户 OTel 互斥)、Block 18(路由挂载:推荐复用 llm-pi-ai 配置路由);汇总表补 16–18
 - TODO 新增「Harness 插件转向」小节(裁定前不开工实现);长线 addon 路线降级为无插件生态工具的补充
 **引用**: docs/architecture.md A6/B4.1 · docs/tech-design.md §1.4/§2.2/§4.2 · docs/REVIEW.md Block 17/18 · README.md
+
+## 2026-08-20 · dsh 调研补遗:UI 接缝与 fork 行为信号(同分支跟进提交)
+**目的**: 三份深挖报告回齐,把超出首轮设计的三个事实固化进文档
+**改动**:
+- A6 补两条 dsh 关键事实:遥测接缝默认 DISABLED(`DSH_TELEMETRY_MODE` 显式开启,强化 Block 17 推荐理由);dsh Web 客户端本身是插件,第三方插件可经 UI slot(`shell.overlay` 等)挂 EXP/等级展示——§2.4 实时反馈通道在插件侧的天然出口(M2+)
+- tech-design §4.2 采集点表新增 `session.forked`(`sessions.fork` + 子会话 `parentSession`):「重新生成/改历史重跑」在 dsh 中不是单一事件而是 fork,此前浏览器埋点才有的 `response.regenerated` 信号在 harness 侧有了不可伪造度更高的对应物
+- TODO 新增 harness 内实时反馈项(M2+,依赖 realtime,不进首版插件)
+**引用**: docs/architecture.md A6 · docs/tech-design.md §4.2 · journal/TODO.md

@@ -194,7 +194,8 @@ gateway/(独立部署单元,非 TS monorepo 的一部分;详见 gateway/README.m
 - 一切皆插件(Cordis 框架):插件 = `apply` 函数 + Schemastery Config;`dsh plugin add <npm 包>` 安装进 profile;unload 自动回收全部 effect;
 - **模型路由**:内置 `llm-pi-ai` 适配器支持声明式 provider 路由(`api: openai-completions | anthropic-messages` + `baseURL` + `apiKeyEnv`)——两种 wire format 恰好都是我们网关的既有承诺(A1 铁律 1),指向网关即可,无需自写 LlmAdapter;
 - **行为数据**:append-only SessionEvent 日志可经 `session/event` 实时订阅;token 用量在 `assistant/chunk{type:'usage'}`(兜底 `assistant/message.usage`),工具调用 `tool/call`/`tool/result`,轮次 `turn/start`/`turn/end`(带结束原因),请求重试 `llm/retry`;seq 连续,天然幂等键 `(session_id, event_seq)`;
-- 官方遥测接缝 `ctx.sessionTelemetry` 自带脱敏瀑布与共享政策披露,但**一进程仅一后端**(与用户自己的 OTel 后端互斥)——取舍见 REVIEW Block 17。
+- 官方遥测接缝 `ctx.sessionTelemetry` 自带脱敏瀑布与共享政策披露,但**一进程仅一后端**(与用户自己的 OTel 后端互斥)、默认 DISABLED(`DSH_TELEMETRY_MODE` 显式开启)——取舍见 REVIEW Block 17;
+- **UI 接缝**:dsh 的 Web 客户端本身是插件,第三方插件可经 slot 机制(`shell.overlay` / `conversation.input.dock` 等)挂自有 UI——EXP 飘字/等级条可直接做进 harness 界面,是技术设计 §2.4 实时反馈通道在插件侧的天然出口(M2+,不进首版插件范围)。
 
 **边界铁律**(数据面分级见技术设计 §1.4 #5,插件不改变它):
 
