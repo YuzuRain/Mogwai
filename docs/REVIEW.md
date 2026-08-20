@@ -300,6 +300,40 @@ tech-design §2.3 写的对账是「LiteLLM spend log ↔ ledger」,能抓到**�
 
 ---
 
+## Block 17 · harness 插件的采集通道:自建出站 还是 dsh 官方遥测接缝(2026-08-19 产品转向新增)
+
+**问题**
+
+dsh 插件采集行为数据有两条通道。官方遥测接缝 `ctx.sessionTelemetry` 基建最全(捕获协调器、`session-telemetry/record` 脱敏瀑布、共享政策披露),但**一个进程只能挂一个后端**——用户若已用 OTel 后端(接自家可观测栈),装我们的插件就得二选一;且该接缝默认关闭,开启是用户显式配置动作。而普通插件订阅 `session/event` 不受此限。
+
+**候选方案**
+
+1. **订阅 `session/event` 自建出站通道**(harness-core 承担批量/重试/spool/幂等,推荐):不与用户 OTel 互斥、不依赖 dsh 特有接缝——采集逻辑落在 vendor 中立层,**换 harness 只换事件映射**,正是通用化要保护的资产;幂等键沿用 `(session_id, event_seq)` 词汇,将来若迁官方接缝零改造。代价:披露与开关自己做(插件 Config 显式 `consent` 项,fail-closed:未同意不上报)。
+2. 实现 `sessionTelemetry` 后端:官方脱敏瀑布与披露白送,语义最正统。代价:与用户自有遥测后端互斥(装插件的门槛)、绑定 dsh 特有接缝(通用层变薄)、默认关闭。
+
+**推荐**:方案 1。互斥性是硬伤——目标用户(重度 coding agent 用户)与「自己接 OTel」人群高度重叠。
+**评审结论**:⬜ 待裁定
+**意见**:_(待填)_
+
+---
+
+## Block 18 · dsh 模型路由的挂载方式:复用 llm-pi-ai 还是自写 LlmAdapter(2026-08-19 产品转向新增)
+
+**问题**
+
+插件要把网关注册为 dsh 的模型提供方。dsh 内置 `llm-pi-ai` 适配器支持声明式 provider(`api: openai-completions | anthropic-messages` + `baseURL` + `apiKeyEnv`),两种 wire format 恰好都是网关既有承诺(架构 A1 铁律 1)。
+
+**候选方案**
+
+1. **插件挂载 llm-pi-ai 配置路由**(推荐):零自研流式协议代码,插件只写配置(网关 baseURL + 平台 token 凭证引用);模型清单可从网关拉取动态生成。代价:依赖 `llm-pi-ai` 包的配置形态,preview 期可能破坏性变更(由 harness-dsh 适配层吸收,pin 版本)。
+2. 自写 `llm-mogwai` LlmAdapter(实现 `stream(GenerateOptions) → AsyncIterable<StreamChunk>`):完全可控、可注入自定义 headers/元数据。代价:重复造 OpenAI + Anthropic 双协议流式适配,且 adapter 接口在 preview 期同样不稳,维护面更大。
+
+**推荐**:方案 1;若后续需要注入网关自定义元数据(如债务清偿路由提示)再升级方案 2,升级点已被 harness-dsh 层封装。
+**评审结论**:⬜ 待裁定
+**意见**:_(待填)_
+
+---
+
 ## 汇总表(review 完后勾选)
 
 | Block | 主题 | 结论 |
@@ -319,5 +353,8 @@ tech-design §2.3 写的对账是「LiteLLM spend log ↔ ledger」,能抓到**�
 | 13 | BYOK CP 冷启动 | ✅ 纯记账制(已落正式文档) |
 | 14 | 公式存储位置 | ✅ 并入 config_versions(2026-08-02 按继续推进指示视为追认) |
 | 15 | 欠费熔断阈值 | ⬜ M1 暂不熔断(blocked 恒 false),阈值待裁定 |
+| 16 | 每日对账第二数据源 | ⬜ 推荐 M2 用 Langfuse trace |
+| 17 | harness 插件采集通道 | ⬜ 推荐订阅 session/event 自建出站(不与用户 OTel 互斥) |
+| 18 | dsh 模型路由挂载方式 | ⬜ 推荐复用 llm-pi-ai 配置路由 |
 
-> Block 1–14 已有结论,裁定均已回写正式文档;Block 15(billing 消费者)、Block 16(每日对账数据源)为开发期新增,待裁定。
+> Block 1–14 已有结论,裁定均已回写正式文档;Block 15/16 为 M1 开发期新增,Block 17/18 为 2026-08-19 harness 插件产品转向新增,均待裁定。

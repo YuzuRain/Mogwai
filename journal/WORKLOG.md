@@ -255,3 +255,18 @@
 - 卫生:apps/web/.next 构建产物曾被误提交,已从跟踪移除并补 .gitignore
 - 测试:ops.test.ts 3 用例(巡检全流转/对账补记与幂等/重放闭环),core-app 全量 34/34 过;worker 入口冒烟(调度器起停 + key-patrol 首跳)
 **引用**: apps/core-app(modules/workers、modules/billing/reconciler.ts、scripts/dlq.ts) · docs/tech-design.md §2.3 · docs/REVIEW.md Block 16
+
+## 2026-08-20 · Harness 插件产品转向:dsh 调研 + 设计修订(分支 redesign/harness-plugin)
+**目的**: 用户裁定产品接入形态转向 agent harness 插件(首发 DeepSeek Harness),要求通用化与解耦;本次完成 dsh 深度调研并把转向落成正式设计
+**改动**:
+- dsh 调研结论(源:deepseek-ai/deepseek-harness 仓库文档 + 源码,2026-08-13 发布 developer preview,MIT,TypeScript/Cordis):
+  - 一切皆插件:插件 = `apply` + Schemastery Config,`dsh plugin add <npm 包>` 安装,`dsh-plugin` topic 分发,unload 自动回收 effect;**无兼容承诺,依赖必须 pin**
+  - 模型路由:内置 `llm-pi-ai` 适配器声明式 provider(`api: openai-completions|anthropic-messages` + baseURL + apiKeyEnv)——两种 wire format 恰好都是网关既有承诺,**无需自写 LlmAdapter**
+  - 行为数据:`session/event` 实时订阅 append-only SessionEvent 日志(turn/tool/usage/retry 全词汇,幂等键 `(session_id, event_seq)`),EV 需要的行为特征全部可见
+  - 官方遥测接缝 `ctx.sessionTelemetry` 自带脱敏瀑布 + 共享披露,但一进程仅一后端(与用户 OTel 互斥)且默认关闭
+- 设计定调:插件 = 接入器(路由挂载,流量仍全经网关,权威计费面不变)+ 采集器(低信任辅助面,锚定网关流量核验);通用化 = `packages/harness-core`(vendor 中立:规范化事件/批量上报/隐私过滤)+ `packages/harness-dsh`(薄 Cordis 适配),后续厂商只加适配器
+- architecture.md v0.5:新增 A6 Harness 插件层(分层/dsh 关键事实/边界铁律 4 条);A1 图加 HARN 节点(README 同步);A3 #21 行为采集主力改 harness 插件;A5 behavior.tracked 生产者扩为 harness 插件;B1 加两个 packages;B4.1 新增数据上报面(平台 token 鉴权 ingest 端点)
+- tech-design.md:§1.4 #5 增 harness 插件形态修订;§2.2 接入形态改「插件首选、配置片段兜底」;§4.2 重写行为采集——harness 采集点清单(规范化事件 ↔ dsh 事件映射表)、信任边界补 `(session_id, event_seq)` 幂等与交叉核验锚定规则
+- REVIEW 新增 Block 17(采集通道:推荐 session/event 自建出站,规避与用户 OTel 互斥)、Block 18(路由挂载:推荐复用 llm-pi-ai 配置路由);汇总表补 16–18
+- TODO 新增「Harness 插件转向」小节(裁定前不开工实现);长线 addon 路线降级为无插件生态工具的补充
+**引用**: docs/architecture.md A6/B4.1 · docs/tech-design.md §1.4/§2.2/§4.2 · docs/REVIEW.md Block 17/18 · README.md

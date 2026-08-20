@@ -28,6 +28,16 @@
 - [x] **workers**:每日对账 BullMQ 任务,M1 范围 stream ↔ ledger(2026-08-18 完成:`BillingReconciler` 归 billing 模块,26h 窗口/5min 尾部宽限/Redis TIME 为时钟基准;漏账走消费者同一 `bill()` 入口幂等补记 + 告警,DLQ 深度告警)
 - [ ] **billing(Block 16 裁定后)**:对账叠加网关侧独立数据源(抓发布端丢失;推荐 M2 用 Langfuse trace,见 docs/REVIEW.md Block 16)
 
+## Harness 插件转向(2026-08-19,分支 redesign/harness-plugin,架构 A6)
+
+- [ ] **REVIEW Block 17/18 裁定**(用户):采集通道(推荐 session/event 自建出站)、路由挂载方式(推荐复用 llm-pi-ai)——裁定前不开工插件实现
+- [ ] **product.html**:接入故事随产品重设计更新(用户主导的产品文档改版,harness 插件为一等接入形态)
+- [ ] **shared**:`behavior.tracked` 的 payload 词汇细化为规范化行为事件 schema(turn.completed / tool.called / request.retried / usage.observed / session.summary,vendor 中立,tech-design §4.2)
+- [ ] **harness-core**:批量上报客户端——spool / 重试 / `(session_id, event_seq)` 幂等 / consent fail-closed(未同意不上报)/ 明文→统计特征过滤(A6 铁律 3)
+- [ ] **harness-dsh**:Cordis 插件——路由挂载(网关 baseURL + 平台 token)+ `session/event` 订阅映射;dsh 版本必须 pin(developer preview 无兼容承诺);npm 发布 + `dsh-plugin` topic
+- [ ] **telemetry**:ingest API `POST /api/v1/telemetry/events`(平台 token 鉴权、shared schema 校验、幂等去重、按用户限流)→ 发布 `behavior.tracked`(B4.1 数据上报面)
+- [ ] **game(M2,依赖上面)**:harness 行为特征与网关 usage.completed 的交叉核验管道(锚定规则:同窗口 token 量级 + provider/model 一致,tech-design §4.2 信任边界)
+
 ## M2+ · 模块设计时再定(不前置拍板)
 
 - [ ] **game(M2)**:EV 特征清单(tech-design §5.1)细化为 ClickHouse 物化视图定义——**以网关流量特征为主数据源**(相邻高相似请求、会话节奏、工具调用模式、上下文长度分布;tracking-sdk 仅覆盖控制台,tech-design §4.2);IV 窄幅随机分配算法(总和 126、单项 13~29)落到注册流程
@@ -45,7 +55,7 @@
 
 - [ ] 折算公式改动双人审批:多人协作后启用(当前单人审批,REVIEW Block 3)
 - [ ] 数据回流/数据资产专项设计:明文数据全量回流后的加工、隐私分级与商业化,「后面一定会有比较重的设计」(REVIEW Block 4)
-- [ ] 客户端形态演进:CLI / addon 获客层评估(2026-07-25 讨论已定框架,tech-design §1.4 #5 数据面分级):
+- [ ] 客户端形态演进:CLI / addon 获客层评估(2026-07-25 讨论已定框架,tech-design §1.4 #5 数据面分级;**2026-08-19 更新**:harness 插件转向已实现此路线的主体——有插件生态的 harness 走 harness-core+适配器,下述本地工件读取路线降级为「无插件生态工具」的补充,优先级进一步后移):
   - `mogwai init` 接入器:检测本机工具、写 base URL/token 配置(纯接入,不采集);
   - 练习赛数据面(低信任,只进练习赛/成长展示,永不进正式数值与经济):Claude Code 读本地 `~/.claude/projects/*.jsonl`(完整 transcript + token 用量,质量最高)/ Cursor 用量 CSV 用户手动导出上传(仅聚合量,非官方端点不做 cookie 自动化)/ Trae 待调研;事件带 `source=addon` 标记与独立信任权重;本地工件 schema 随工具版本变化,读取器按「坏了修」维护,不上关键路径;隐私显式同意(transcript 含完整代码库内容);
   - 前提:核心循环先为 API Key 用户跑通,此项不早于 M5

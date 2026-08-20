@@ -68,6 +68,7 @@ flowchart LR
 4. **可复盘**:战斗结果必须附带败因分析数据,复盘页是把玩家引导回养成循环的关键入口,见 §9.5。
 5. **采集钉在网关,客户端形态可替换**(2026-07-25 裁定):平台的立身之本是拿到用户数据与提示词,因此语义数据采集必须在网关层完成,不得依赖任何特定客户端;客户端形态(当前:第三方网关 + 控制台;未来可能:纯 CLI addon)是可替换外壳,替换外壳不得影响数据回流。
    - **目标用户与可达边界**(2026-07-25 讨论结论):目标画像是「按 token 付费的 coding agent 用户」——Claude Code / Codex CLI / Cline / Cursor / Trae 等工具均支持 base URL 覆盖,一行配置即接入网关(OpenRouter 已验证此路径,coding agent 是网关类产品最大流量源)。订阅制流量(Claude Max OAuth、Cursor 内置模型)走厂商私有鉴权,结构性不可达,不为其改设计;订阅用户定位为转化漏斗上游——EV/EXP 只从网关流量生长,游戏机制本身构成把流量迁移过来的动力。
+   - **harness 插件形态**(2026-08-19 产品转向):agent harness 开放插件生态后(首发 DeepSeek Harness),「可替换外壳」升级为**一等接入形态**——插件一键完成路由挂载(模型流量仍全部经网关,权威面不变)并订阅 harness 会话事件做行为采集(轮次节奏 / 工具调用序列 / 重试,丰富度远超网关流量可见特征)。通用化纪律:vendor 中立核心 + 每 harness 薄适配,后续厂商跟进只加适配器。组件边界见架构 A6。
    - **数据面分级**:网关采集是**权威数据面**(计费、正式 EV/EXP、结算全部只认它);未来 addon 侧采集(本地工件读取等,见 journal/TODO 长线)是**低信任辅助面**——客户端数据均为用户自述、可伪造,只进练习赛与成长展示,永不进入正式数值与经济(信任边界见 §4.2)。
 
 同时,产品明确**首版不做**:公会/社交、体力值、每日签到、Chat UI、装备强化——技术方案不为这些预留抽象,需要时再重构。
@@ -102,7 +103,7 @@ flowchart LR
 - 对外暴露**两种 wire format**(均为 M1 验收项):
   - `POST /v1/chat/completions`(以及 `/v1/embeddings` 等),入参兼容 OpenAI 协议,模型名采用 `provider/model` 形式(如 `anthropic/claude-sonnet-4`)——覆盖 Codex CLI / Cline / Cursor / Trae 等 OpenAI 兼容客户端;
   - `POST /v1/messages`(Anthropic wire format)——**硬需求**:Claude Code 通过 `ANTHROPIC_BASE_URL` 接入,是单一最大 coding agent 客户端,缺此端点等于放弃该人群(LiteLLM 原生支持,配置量级)。
-- 接入形态即转化面:每工具的「一行配置」接入指南(工具选择 → 生成配置片段)是控制台一等公民,随 M1 控制台交付。
+- 接入形态即转化面:**harness 插件是首选接入**(2026-08-19 起,如 dsh 一条 `dsh plugin add` 完成路由 + 采集,架构 A6);无插件生态的工具保留「一行配置」接入指南(工具选择 → 生成配置片段,M1 已随控制台交付)作为兜底。两种形态的模型流量都经网关,数据面无差别。
 - 路由策略(按优先级):
   1. **债务清偿路由**:调用者存在未清偿债权时,优先使用债务人的托管 Key(见 §10.3);
   2. 用户自己托管的、匹配该模型的 Key(**BYOK 模式**,服务费记入平台应收);
@@ -277,25 +278,29 @@ credit     = ceil( usd_cost * fx_rate * margin * tier_discount )
 - 模型、参数(temperature 等)、token 数、延迟、错误
 - 会话上下文:session_id、轮次、是否携带 system prompt / tools
 
-**用户行为类(客户端 SDK / 控制台埋点 → 事件管道):**
+**用户行为类(harness 插件 / 控制台埋点 → 事件管道):**
 
-> **数据源主次(2026-07-25 修订)**:主力用户经 coding agent 接入网关,**不运行浏览器 tracking-sdk**——下表行为事件实际只覆盖 Web 控制台场景,是补充数据源。M2 设计 EV 特征清单时,**以网关流量可见特征为主数据源**:重新生成表现为相邻高相似请求、会话节奏与深度、工具调用模式、上下文长度分布等,均可从 `usage.completed` + Langfuse trace 在 ClickHouse 侧提取,且天然自带锚点、不可伪造。
+> **数据源主次(2026-08-19 修订)**:权威面始终是网关流量(`usage.completed` + Langfuse trace,天然自带锚点、不可伪造);行为辅助面的**主力是 harness 插件**(架构 A6)——它看得见网关看不见的工作流结构;浏览器 tracking-sdk 只覆盖 Web 控制台场景,退居补充。
 
-| 事件 | 含义 | 喂给哪个 EV |
+harness 插件采集点(以 dsh 的 SessionEvent 词汇为首个映射源,harness-core 规范化后上报;明细特征→EV 权重矩阵随 M2 EV 特征清单设计):
+
+| 规范化事件(vendor 中立) | dsh 采集点 | 行为语义(候选 EV 方向) |
 |---|---|---|
-| `prompt.edited` | 发送前反复修改 prompt | 特防(审慎) |
-| `response.regenerated` | 重新生成 | 防御 |
-| `response.copied` / `accepted` | 采纳输出 | 攻击(一击命中) |
-| `session.duration` | 会话时长/深夜使用 | HP |
-| `tool.called` | function calling / 多模态 | 特攻 |
-| `rapid.fire` | 高频短 prompt | 速度 |
+| `turn.completed` | `turn/start` / `turn/end`(带结束原因) | 会话节奏、轮深、任务完成/中断(HP / 速度) |
+| `tool.called` | `tool/call` / `tool/result`(含 isError) | 工具调用序列与纠错模式(特攻 / 防御) |
+| `request.retried` | `llm/retry` | 失败恢复行为(防御) |
+| `usage.observed` | `assistant/chunk{type:'usage'}` / `assistant/message.usage` | **交叉核验锚点**:与网关 usage.completed 对量级 |
+| `session.summary` | 会话粒度聚合(时长、深夜、轮数) | 使用习惯(HP) |
+
+控制台埋点(tracking-sdk,补充):`prompt.edited`(特防)、`response.copied/accepted`(攻击)等,仅 Web 场景。
 
 **行为事件的信任边界(防刷 EV):**
 
-行为事件来自浏览器、可被伪造,而 EV 影响战斗面板、战斗输赢是真实 CP——必须视为不可信输入:
+行为事件来自客户端(harness 插件 / 浏览器)、可被伪造,而 EV 影响战斗面板、战斗输赢是真实 CP——必须视为不可信输入:
 
-- 行为事件必须携带**锚点**:关联一次真实调用的 `request_id`(或 `langfuse_trace_id`),telemetry 消费时与网关的 `usage.completed` 交叉核验;无锚点或核验失败的事件只进分析库,**不进 EV 特征**;
-- 事件 API 按用户限流;按「行为事件数 / usage 调用数」比值做离群检测,异常账户 EV 冻结并告警。
+- 行为事件必须可**锚定**到网关真实流量:harness 事件按「同窗口 token 量级 + provider/model 一致」与 `usage.completed` 交叉核验,控制台事件关联 `request_id`(或 `langfuse_trace_id`);无锚点或核验失败的事件只进分析库,**不进 EV 特征**;
+- ingest API 按用户限流,按 `(session_id, event_seq)` 幂等去重;按「行为事件数 / usage 调用数」比值做离群检测,异常账户 EV 冻结并告警;
+- 该面数据只进练习赛与成长展示,**永不进入正式数值与经济**(§1.4 #5 分级)。
 
 ### 4.3 隐私与合规
 

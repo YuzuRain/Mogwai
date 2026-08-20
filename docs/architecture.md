@@ -1,6 +1,6 @@
 # Mogwai 技术架构设计
 
-> Architecture Design v0.4 · 配套文档:[技术设计](./tech-design.md) · [产品文档(H5)](./product.html)
+> Architecture Design v0.5 · 配套文档:[技术设计](./tech-design.md) · [产品文档(H5)](./product.html)
 >
 > 本文分两部分:**Part A 顶层技术架构**(组件选型与边界契约)、**Part B 代码概要设计**(模块、数据模型、时序)。
 
@@ -13,9 +13,10 @@
 ```mermaid
 flowchart TB
     subgraph clients [接入层]
-      APP[用户应用 / IDE / Agent<br/><i>任意 OpenAI 兼容 SDK</i>]
+      HARN[harness 插件(首选接入)<br/><b>harness-core + 各 harness 适配</b><br/>首发:DeepSeek Harness(dsh)]
+      APP[用户应用 / IDE / Agent<br/><i>任意 OpenAI 兼容 SDK(兜底接入)</i>]
       WEB[控制台 + 对战 H5<br/><b>Next.js</b> App Router]
-      TSDK[行为采集<br/><b>tracking-sdk(自研薄 SDK)</b>]
+      TSDK[行为采集<br/><b>tracking-sdk(仅控制台)</b>]
     end
 
     subgraph edge [网关层 · 独立部署 · 可替换运行时]
@@ -41,6 +42,8 @@ flowchart TB
       KMS[<b>云 KMS / OpenBao Transit</b><br/>Provider Key 信封加密]
     end
 
+    HARN -->|路由配置:模型流量仍全部经网关| GW
+    HARN -->|behavior.tracked(批量,平台 token)| TELE
     APP -->|/v1/chat/completions| GW
     WEB -->|REST| app
     RT -.->|Socket.IO 推送| WEB
@@ -114,7 +117,7 @@ flowchart TB
 | 18 | 事件总线 | **Redis Streams**(消费组) | 全部领域事件 | Kafka:> 5k msg/s、需长回溯时迁移;代码依赖自建 `EventBus` 抽象 |
 | 19 | OLAP | **ClickHouse**(与 Langfuse v3 共用实例) | 行为事件原始表、EV 特征物化视图 | 资源冲突时拆独立实例 |
 | 20 | LLM 观测 | **Langfuse v3**(自托管) | prompt/completion/trace 存储、会话关联 | Helicone / Phoenix;接口层抽象为 TelemetrySink |
-| 21 | 行为采集 | **自研 tracking-sdk**(浏览器,< 3KB) | prompt.edited / regenerated 等事件 → 事件 API;**仅覆盖 Web 控制台,系补充数据源**(EV 主数据源是网关流量,技术设计 §4.2) | PostHog:事件 schema 是 EV 体系核心资产,不外包 |
+| 21 | 行为采集 | **harness 插件**(harness-core + 各 harness 适配,见 A6)+ tracking-sdk(浏览器,仅控制台) | harness 会话事件 → 规范化行为事件 → telemetry ingest API;**低信任辅助面,锚定网关流量核验**(EV 权威数据源仍是网关流量,技术设计 §4.2) | PostHog:事件 schema 是 EV 体系核心资产,不外包 |
 
 **安全与运营**
 
@@ -159,7 +162,7 @@ gateway/(独立部署单元,非 TS monorepo 的一部分;详见 gateway/README.m
 | Topic | 生产者 | 消费者 |
 |---|---|---|
 | `usage.completed` | gateway(usage_publisher) | billing / game.exp / telemetry / realtime |
-| `behavior.tracked` | tracking-sdk → telemetry API | game.ev |
+| `behavior.tracked` | harness 插件 / tracking-sdk → telemetry ingest API | game.ev |
 | `ev.settled`(日结) | game.ev worker | game(面板重算)/ game.report |
 | `ev.report.generated` | game.report | realtime(日报通知) |
 | `trainer.levelup` | game.exp | game.gacha(发券)/ realtime |
@@ -170,6 +173,35 @@ gateway/(独立部署单元,非 TS monorepo 的一部分;详见 gateway/README.m
 - schema 以 `packages/shared` 中的 zod 定义为权威(gateway 的 Python 侧按 JSON Schema 导出物校验);
 - 消费组独立位点,单个下游故障不影响其他下游;
 - **结算等有经济后果的消费,只依据事件引用的「合约」执行**(技术设计 §1.5),不回读配置中心。
+
+## A6. Harness 插件层(接入与行为采集的客户端形态)
+
+> 2026-08-19 产品转向:agent harness 开放插件生态后(首发 DeepSeek Harness,下称 dsh),
+> 接入形态从「用户手改 base URL」升级为「装一个插件」。插件同时解决**接入**(挂载模型路由
+> 指向网关)与**行为采集**(订阅 harness 会话事件)。两项实现取舍待裁定:采集通道
+> (REVIEW Block 17)、路由挂载方式(REVIEW Block 18)。
+
+**分层:一套 vendor 中立核心 + 每 harness 一个薄适配**(与「网关是可替换运行时」同构;
+后续厂商跟进类似插件生态时只加适配器):
+
+| 组件 | 职责 | 约束 |
+|---|---|---|
+| `packages/harness-core`(vendor 中立) | 规范化行为事件模型(schema 权威在 `packages/shared`)、批量上报客户端(spool / 重试 / 幂等键)、隐私过滤(明文 → 统计特征) | **零 harness 依赖**;上报协议不出现任何 harness 品牌概念 |
+| `packages/harness-dsh`(dsh 适配,npm 发布 + `dsh-plugin` topic) | Cordis 插件:① 挂载模型路由(网关 baseURL + 平台 token);② 订阅 `session/event`,映射为规范化事件交给 harness-core | 薄、无业务规则;dsh 处 developer preview **无兼容承诺**,依赖版本必须 pin,破坏性变更由本层吸收 |
+
+**dsh 关键事实**(2026-08 调研,源:dsh 仓库 docs/capability-seams、subsystems/{session,session-telemetry,llm-streaming}):
+
+- 一切皆插件(Cordis 框架):插件 = `apply` 函数 + Schemastery Config;`dsh plugin add <npm 包>` 安装进 profile;unload 自动回收全部 effect;
+- **模型路由**:内置 `llm-pi-ai` 适配器支持声明式 provider 路由(`api: openai-completions | anthropic-messages` + `baseURL` + `apiKeyEnv`)——两种 wire format 恰好都是我们网关的既有承诺(A1 铁律 1),指向网关即可,无需自写 LlmAdapter;
+- **行为数据**:append-only SessionEvent 日志可经 `session/event` 实时订阅;token 用量在 `assistant/chunk{type:'usage'}`(兜底 `assistant/message.usage`),工具调用 `tool/call`/`tool/result`,轮次 `turn/start`/`turn/end`(带结束原因),请求重试 `llm/retry`;seq 连续,天然幂等键 `(session_id, event_seq)`;
+- 官方遥测接缝 `ctx.sessionTelemetry` 自带脱敏瀑布与共享政策披露,但**一进程仅一后端**(与用户自己的 OTel 后端互斥)——取舍见 REVIEW Block 17。
+
+**边界铁律**(数据面分级见技术设计 §1.4 #5,插件不改变它):
+
+1. **模型流量必须经网关**:插件只做路由配置,自身不代理流量——权威计费面、Key 托管、债务清偿全部不变;
+2. **插件上报是低信任辅助面**:客户端数据均为用户自述、可伪造,只进练习赛与成长展示;与网关 `usage.completed` 交叉核验(同窗口 token 量级、provider/model 一致)后方可进 EV 特征;
+3. **隐私红线比网关更严**:插件默认只上报统计特征(长度 / hash / 结构),prompt 明文不出用户机器;
+4. **上报走 telemetry ingest API**(平台 token 鉴权,B4.1),入 `behavior.tracked` 流(A5)——tracking-sdk 与 harness 插件共用同一条低信任通道,消费侧无需区分来源品牌。
 
 ---
 
@@ -217,7 +249,9 @@ mogwai/
 │   ├── battle-core/                # ★ 纯函数战斗引擎(零依赖,前后端同构)
 │   ├── formula-engine/             # ★ 公式 DSL 求值沙箱(billing 与 admin 预览共用)
 │   ├── game-config/                # 数值配置 schema + 默认值(技能表/克制表/概率表)
-│   └── tracking-sdk/               # 浏览器行为采集 SDK
+│   ├── harness-core/               # harness 插件核心(vendor 中立):规范化事件 + 批量上报 + 隐私过滤(A6)
+│   ├── harness-dsh/                # DeepSeek Harness(dsh)适配:Cordis 插件,npm 独立发布(A6)
+│   └── tracking-sdk/               # 浏览器行为采集 SDK(仅控制台)
 │
 ├── infra/
 │   ├── docker-compose.yml          # pg / redis / clickhouse / langfuse / litellm 本地一键起
@@ -356,6 +390,12 @@ better-auth 按 Origin 做 CSRF 校验,core-app 须以 `MOGWAI_WEB_ORIGIN` 显�
 | admin | `GET /api/v1/admin/configs?namespace=` | 配置版本列表 |
 | admin | `POST /api/v1/admin/configs` | 新建 draft(payload 按 namespace 的 shared schema 校验) |
 | admin | `POST /api/v1/admin/configs/:id/activate` | draft→active,原 active→retired(单事务);灰度流程随 M2+ |
+
+**数据上报面**(M2 随 telemetry 模块交付;与管理面不同,鉴权用平台 token——上报方是用户机器上的 harness 插件 / tracking-sdk,无浏览器 session):
+
+| 模块 | 端点 | 行为(副作用) |
+|---|---|---|
+| telemetry | `POST /api/v1/telemetry/events` | 批量行为事件(shared schema 校验、按 `(session_id, event_seq)` 幂等去重、按用户限流)→ 发布 `behavior.tracked` |
 
 - admin 端点需 admin 角色,角色机制随 better-auth admin 插件在 account 实现时落地;
 - 投影写入(token/Key 路由/授权)是对应端点的**同步副作用**,由拥有该数据的模块执行

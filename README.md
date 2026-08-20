@@ -32,9 +32,10 @@
 ```mermaid
 flowchart TB
     subgraph clients [接入层]
-      APP[用户应用 / IDE / Agent<br/><i>任意 OpenAI 兼容 SDK</i>]
+      HARN[harness 插件(首选接入)<br/><b>harness-core + 各 harness 适配</b><br/>首发:DeepSeek Harness(dsh)]
+      APP[用户应用 / IDE / Agent<br/><i>任意 OpenAI 兼容 SDK(兜底接入)</i>]
       WEB[控制台 + 对战 H5<br/><b>Next.js</b> App Router]
-      TSDK[行为采集<br/><b>tracking-sdk(自研薄 SDK)</b>]
+      TSDK[行为采集<br/><b>tracking-sdk(仅控制台)</b>]
     end
 
     subgraph edge [网关层 · 独立部署 · 可替换运行时]
@@ -60,6 +61,8 @@ flowchart TB
       KMS[<b>云 KMS / OpenBao Transit</b><br/>Provider Key 信封加密]
     end
 
+    HARN -->|路由配置:模型流量仍全部经网关| GW
+    HARN -->|behavior.tracked(批量,平台 token)| TELE
     APP -->|/v1/chat/completions| GW
     WEB -->|REST| app
     RT -.->|Socket.IO 推送| WEB
